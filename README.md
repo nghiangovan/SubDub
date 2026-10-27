@@ -48,6 +48,7 @@ Bấm biểu tượng **SubDub** trên thanh công cụ để mở bảng cài �
 
 - **Tải bộ dịch offline (1 lần)**: dịch ngay trên máy, không giới hạn.
 - **Tải giọng offline (63MB, 1 lần)**: giọng đọc dự phòng, dùng khi Google tạm chặn giọng đọc.
+- *(Tuỳ chọn, nên làm trên Windows)* Cài **giọng tiếng Việt của Windows**: vào *Settings → Time & language → Speech → Add voices*, chọn **Vietnamese (Tiếng Việt)**, rồi gõ `chrome://restart`. Khi Google chặn, tiện ích chuyển ngay sang giọng này, nghe hay hơn giọng offline.
 
 ![Hai nút tải offline trong bảng cài đặt](docs/images/4-popup.png)
 

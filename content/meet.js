@@ -113,12 +113,12 @@
     }
     return loose;
   }
-  // The caption item inside that menu (it may be labelled by its text only)
+  // The caption item inside that menu while it is on screen (it may be labelled by its text only)
   function menuCaptionItem(opener) {
     const items = document.querySelectorAll('button, [role="button"], [role="menuitem"], [role="menuitemcheckbox"], [role="switch"]');
     for (let i = 0; i < items.length; i++) {
       const b = items[i];
-      if (b === opener || b.closest('#yvd-meet-panel')) continue;
+      if (b === opener || b.closest('#yvd-meet-panel') || !b.getClientRects().length) continue;
       const label = b.getAttribute('aria-label') || b.innerText || '';
       if (CC_WORD.test(label) && (CC_OFF.test(label) || CC_ON.test(label))) return b;
     }
@@ -130,45 +130,67 @@
   // pressing the opener again closes it (only while it is still open)
   function closeMenu(opener) {
     const expanded = opener.getAttribute('aria-expanded');
-    const item = menuCaptionItem(opener);
-    if (expanded === 'true' || (expanded === null && item && item.offsetParent !== null)) opener.click();
+    if (expanded === 'true' || (expanded === null && menuCaptionItem(opener))) opener.click();
   }
-  // Open the menu, wait for it, press "Turn on captions" only if it says turn ON, then close the menu again.
+  // Open the menu, wait for it, press "Turn on captions" only if it says turn ON, then close the menu again. The menu
+  // also opens on hover: if it is already showing, just press the item and leave the menu to the user.
   function turnOnViaMenu() {
     const opener = ccMenuButton();
     if (!opener) return;
+    const shown = !!menuCaptionItem(opener);
     autoCC.busy = true;
-    opener.click();
+    autoCC.looks++;
+    if (!shown) opener.click();
     let n = 0;
     const timer = setInterval(() => {
       const item = menuCaptionItem(opener);
       if (!item && ++n < 12) return; // the menu animates in
       clearInterval(timer);
       autoCC.busy = false;
-      if (!item) return;
+      if (!item) {
+        // the menu did not show (or the user's own click closed it): no harm done, the next look tries again
+        if (!shown) setTimeout(() => closeMenu(opener), 300);
+        return;
+      }
       const label = itemLabel(item);
       if (CC_ON.test(label)) {
         autoCC.done = true; // captions are already on: leave them
       } else if (CC_OFF.test(label)) {
         item.click();
+        autoCC.tries++;
         P.status('SubDub: đã tự bật phụ đề (CC) của Meet', 4000);
       }
-      setTimeout(() => closeMenu(opener), 300);
+      if (!shown) setTimeout(() => closeMenu(opener), 300);
     }, 150);
   }
 
   // ---------- auto CC (opt-in) ----------
   // Press Meet's CC button once per call: only after the button has been in the "off" state for a moment (the call
-  // UI has settled), at most 3 attempts. Once captions have been on, never touch it again in this call, so a user
+  // UI has settled), at most 3 presses. Once captions have been on, never touch it again in this call, so a user
   // who turns CC off by hand keeps it off. Leaving the call (no caption button any more) re-arms it.
+  // It waits while the user is clicking/typing (opening the chat, etc.), and a look into the menu that found nothing
+  // to press does not count as a press, so being busy early in the call no longer makes it give up.
   const AUTO_CC_SETTLE = 2000;
   const AUTO_CC_RETRY = 2500;
-  const autoCC = { done: false, busy: false, tries: 0, offSince: 0, lastTry: 0, meeting: '' };
+  const AUTO_CC_SLOW_RETRY = 6000; // after a few empty looks into the menu
+  const AUTO_CC_MAX_LOOKS = 15; // ~1.5 min of trying
+  const USER_QUIET_MS = 1500;
+  const autoCC = { done: false, busy: false, tries: 0, looks: 0, offSince: 0, lastTry: 0, meeting: '' };
+  let lastUserInput = 0;
+  ['pointerdown', 'keydown', 'wheel'].forEach((t) =>
+    window.addEventListener(
+      t,
+      (e) => {
+        if (e.isTrusted) lastUserInput = Date.now();
+      },
+      { capture: true, passive: true }
+    )
+  );
   function maybeAutoCC(cc) {
     const now = Date.now();
     if (autoCC.meeting !== location.pathname) {
       // a different meeting (Meet is a single-page app): arm again
-      Object.assign(autoCC, { done: false, busy: false, tries: 0, offSince: 0, lastTry: 0, meeting: location.pathname });
+      Object.assign(autoCC, { done: false, busy: false, tries: 0, looks: 0, offSince: 0, lastTry: 0, meeting: location.pathname });
     }
     if (cc === 'none') {
       autoCC.offSince = 0;
@@ -184,13 +206,14 @@
       return;
     }
     if (!autoCC.offSince) autoCC.offSince = now;
-    if (now - autoCC.offSince < AUTO_CC_SETTLE || now - autoCC.lastTry < AUTO_CC_RETRY) return;
-    if (autoCC.tries >= 3) {
+    const gap = autoCC.looks > 4 ? AUTO_CC_SLOW_RETRY : AUTO_CC_RETRY;
+    if (now - autoCC.offSince < AUTO_CC_SETTLE || now - autoCC.lastTry < gap) return;
+    if (autoCC.tries >= 3 || autoCC.looks >= AUTO_CC_MAX_LOOKS) {
       autoCC.done = true; // give up quietly; the panel keeps showing the "turn on CC" hint
       return;
     }
+    if (now - lastUserInput < USER_QUIET_MS) return; // the user is doing something: do not pop a menu under them
     if (cc === 'menu') {
-      autoCC.tries++;
       autoCC.lastTry = now;
       turnOnViaMenu();
       return;

@@ -1,0 +1,8 @@
+# Pinned runtime for the SubDub VieNeu host (Python 3.12, Windows x86_64 / Linux x86_64 wheels exist for all).
+onnxruntime==1.30.0
+numpy==2.5.3
+sea-g2p==0.10.0
+# transitive dependencies of onnxruntime, pinned as well
+flatbuffers==25.12.19
+packaging==26.3
+protobuf==7.36.2

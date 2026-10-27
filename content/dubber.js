@@ -1,5 +1,6 @@
-/* Vietnamese dubbing: speechSynthesis (system vi voice), Google Translate TTS or offline Piper (both play in the
- * offscreen document, via background); chrome.tts only as last resort. Plus original-audio ducking. */
+/* Vietnamese dubbing: speechSynthesis (system vi voice), Google Translate TTS, offline Piper or the optional local
+ * VieNeu program (all three play in the offscreen document, via background); chrome.tts only as last resort.
+ * Plus original-audio ducking. */
 (function (root) {
   'use strict';
   const YVD = (root.YVD = root.YVD || {});
@@ -92,17 +93,20 @@
     return !(playbackRate > (dubMaxSpeed > 0 ? dubMaxSpeed : 2.0) + 1e-6);
   }
 
-  // Which engine speaks: 'system' (speechSynthesis vi voice), 'google' (translate_tts), 'piper' (offline, offscreen)
-  // or 'chrome' (chrome.tts, last resort).
-  //   setting: 'auto' | 'google' | 'piper' | 'system'
+  // Which engine speaks: 'system' (speechSynthesis vi voice), 'google' (translate_tts), 'piper' (offline, offscreen),
+  // 'vieneu' (optional local program, offscreen) or 'chrome' (chrome.tts, last resort).
+  //   setting: 'auto' | 'google' | 'piper' | 'system' | 'vieneu'
   //   hasVi: a vi* speechSynthesis voice exists; googleDown: Google TTS failed within the cooldown;
   //   piperReady: the Piper voice is downloaded.
   // Any Google failure falls back to Piper at once (when downloaded) and stays on it for the cooldown.
   // natural: the system voice is a Microsoft "Natural" one (Edge), better than Google. A plain installed voice
   // (Windows "Microsoft An") sounds worse than Google, so in auto it is the instant offline fallback instead.
-  function resolveEngine(setting, hasVi, googleDown, piperReady, natural) {
+  // vieneuReady: the local program is ready and not in its failure cooldown. Only the explicit 'vieneu' setting
+  // uses it ('auto' never does); when it is not ready the line goes to Google, then the usual fallback.
+  function resolveEngine(setting, hasVi, googleDown, piperReady, natural, vieneuReady) {
     const offline = piperReady ? 'piper' : 'chrome';
     const fallback = hasVi ? 'system' : offline;
+    if (setting === 'vieneu' && vieneuReady) return 'vieneu';
     if (setting === 'system') return hasVi ? 'system' : offline;
     if (setting === 'piper') return piperReady ? 'piper' : googleDown ? 'chrome' : 'google'; // not downloaded yet: Google meanwhile
     if (setting === 'google') return googleDown ? fallback : 'google';
@@ -111,6 +115,7 @@
   }
 
   const GOOGLE_COOLDOWN = 60000; // after a Google TTS failure, stay on the fallback this long (ms)
+  const VIENEU_COOLDOWN = 60000; // same for the local VieNeu program
   const googleIsDown = function (until, now) {
     return (now == null ? Date.now() : now) < until;
   };
@@ -154,6 +159,7 @@
     googleIsDown: googleIsDown,
     cooldownEnd: cooldownEnd,
     GOOGLE_COOLDOWN: GOOGLE_COOLDOWN,
+    VIENEU_COOLDOWN: VIENEU_COOLDOWN,
     DEFAULT_SPC: DEFAULT_SPC,
     estSeconds: estSeconds,
     requiredRate: requiredRate,
@@ -173,15 +179,20 @@
 
   const synth = root.speechSynthesis;
   let video = null;
-  let cfg = { ttsEngine: 'auto', ttsVoice: '', ttsRate: 1.1, duckLevel: 0.15, ttsMaxRate: 2.0, dubVolume: 1 };
+  let cfg = { ttsEngine: 'auto', ttsVoice: '', vieneuVoice: 'Trúc Ly', ttsRate: 1.1, duckLevel: 0.15, ttsMaxRate: 2.0, dubVolume: 1 };
   const spcByVoice = {};
   let voiceKey = 'default';
   let active = false;
   let voices = [];
   let usingFallback = false;
-  let usingOffscreen = false; // current utterance plays in the offscreen document (google or piper)
+  let usingOffscreen = false; // current utterance plays in the offscreen document (google, piper or vieneu)
   let googleDownUntil = 0; // after a Google TTS failure, use piper (or chrome.tts) until this time
   let announcedGoogle = false;
+  let vieneuState = ''; // storage.local 'vieneuState' (background): 'ready' | 'loading' | 'not-installed' | ... | ''
+  let vieneuDownUntil = 0; // after a VieNeu line failed, use Google (then the fallback) until this time
+  let announcedVieneu = false;
+  let hintedVieneu = false; // the "install VieNeu" hint is appended to a Google-blocked status once per page
+  let lastVieneuCheck = 0;
   let piperReady = false; // the offline voice is downloaded (storage.local 'piperReady' + background status)
   let piperAutoTried = false;
   let duckSuppressed = false; // engine produced no audio: keep the original volume
@@ -232,6 +243,18 @@
     });
   }
 
+  // storage.local 'vieneuState' is kept up to date by background; read it once when dubbing starts (then onChanged).
+  function loadVieneuState() {
+    try {
+      if (!YVD.settings || !YVD.settings.alive()) return;
+      root.chrome.storage.local.get('vieneuState', function (o) {
+        void root.chrome.runtime.lastError;
+        vieneuState = (o && o.vieneuState) || '';
+        if (cfg.ttsEngine === 'vieneu') refreshVieneu(true);
+      });
+    } catch (e) {}
+  }
+
   let piperWarmed = false;
   function refreshPiperReady() {
     sendBg({ type: 'piper', op: 'status' }).then(function (r) {
@@ -250,7 +273,12 @@
   try {
     if (YVD.settings && YVD.settings.alive()) {
       root.chrome.storage.onChanged.addListener(function (ch, area) {
-        if (area !== 'local' || !ch.piperReady) return;
+        if (area !== 'local') return;
+        if (ch.vieneuState) {
+          vieneuState = ch.vieneuState.newValue || '';
+          if (vieneuState === 'ready') announcedVieneu = false; // (a failure cooldown still has to run out)
+        }
+        if (!ch.piperReady) return;
         piperReady = !!ch.piperReady.newValue;
         if (piperReady) warmPiper();
       });
@@ -259,6 +287,69 @@
 
   function getSpc() {
     return spcByVoice[voiceKey] || DEFAULT_SPC;
+  }
+
+  // ---- VieNeu (optional local program, reached through background's native-messaging bridge) ----
+  // 'idle' is fine: the program is installed and loads the model on the first line (or on the 'warm' request).
+  // 'loading' / 'low-memory' / 'too-slow' / not installed / error: Google speaks meanwhile.
+  const vieneuOk = function () {
+    return (vieneuState === 'ready' || vieneuState === 'idle') && !googleIsDown(vieneuDownUntil);
+  };
+  // The engine for the next line (one place for every call site).
+  function pickEngine(voice) {
+    return resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady, YVD.settings.isNaturalVoice(voice), vieneuOk());
+  }
+  function engineKey(engine, voice) {
+    return engine === 'system' ? voice.name : engine === 'vieneu' ? 'vieneu:' + cfg.vieneuVoice : engine === 'google' ? 'google' : engine === 'piper' ? 'piper' : 'fallback';
+  }
+  // Learn the current state (and wake the connection so the model is loaded before the first line). Throttled;
+  // a "not installed"/"error" state is re-checked from scratch, so installing while a video plays is noticed.
+  function refreshVieneu(force) {
+    const now = Date.now();
+    const weak = vieneuState === 'low-memory' || vieneuState === 'too-slow'; // (a fresh program re-evaluates it: not too often)
+    if (!force && now - lastVieneuCheck < (weak ? 60000 : 15000)) return;
+    lastVieneuCheck = now;
+    const recheck = vieneuState === 'not-installed' || vieneuState === 'error' || weak;
+    sendBg({ type: 'vieneu', op: recheck ? 'recheck' : 'status' }).then(function (r) {
+      if (r && r.state) vieneuState = r.state;
+    });
+  }
+  // Ask the program to load the model: dubbing is really happening (a line is about to be spoken). Throttled; it
+  // doubles as the keep-alive while a video plays. Never done from a mere status check.
+  let lastWarm = 0;
+  function warmVieneu() {
+    if (cfg.ttsEngine !== 'vieneu' || !active) return;
+    const now = Date.now();
+    if (now - lastWarm < 45000 || !(vieneuState === 'idle' || vieneuState === 'ready' || vieneuState === '')) return;
+    lastWarm = now;
+    sendBg({ type: 'vieneu', op: 'warm' }).then(function (r) {
+      if (r && r.state) vieneuState = r.state;
+    });
+  }
+  // The explicit VieNeu setting could not use VieNeu for this line: say so once and keep checking in the background.
+  function noteVieneuFallback() {
+    if (cfg.ttsEngine !== 'vieneu') return;
+    if (vieneuState === 'loading') return; // the model is starting: Google covers the first lines without a status pill
+    refreshVieneu(false);
+    if (announcedVieneu) return;
+    announcedVieneu = true;
+    const other = googleIsDown(googleDownUntil) ? 'giọng dự phòng' : 'Google';
+    if (vieneuState === 'low-memory') onStatus('SubDub: máy đang thiếu RAM, tạm dùng ' + other);
+    else if (vieneuState === 'too-slow') onStatus('SubDub: máy hơi yếu cho VieNeu, tạm dùng ' + other);
+    else onStatus('SubDub: giọng VieNeu chưa sẵn sàng, tạm dùng ' + other);
+  }
+  // r: the failed reply; the program says why when the machine is the problem (low-memory / too-slow)
+  function vieneuFailed(r) {
+    vieneuDownUntil = cooldownEnd(Date.now(), VIENEU_COOLDOWN);
+    if (r && (r.error === 'low-memory' || r.error === 'too-slow')) vieneuState = r.error;
+    else refreshVieneu(true); // find out why (crashed? stopped?) so the popup state is right
+    noteVieneuFallback();
+  }
+  // One-off hint appended to the "Google blocked" status for people who have not set VieNeu up.
+  function vieneuHint() {
+    if (hintedVieneu || cfg.ttsEngine === 'vieneu') return '';
+    hintedVieneu = true;
+    return vieneuState === 'ready' ? ' · chọn giọng VieNeu trong popup để không bị chặn' : ' · cài giọng VieNeu để không bị chặn';
   }
 
   // Live mode only: nothing but finish(id) clears `speaking`, so a lost end event (speechSynthesis onend never fires)
@@ -298,24 +389,28 @@
 
   function speakCue(cue, nextCue, nextCue2) {
     if (!active || !cue || !cue.vi) return;
+    warmVieneu();
     speakCueInner(cue, nextCue);
     prefetchAhead([nextCue, nextCue2]);
   }
 
-  // Warm the offscreen cache with the upcoming cues' audio (Google fetch or Piper synthesis).
+  // Warm the offscreen cache with the upcoming cues' audio (Google fetch, Piper or VieNeu synthesis).
   function prefetchAhead(cues) {
     const voice = pickVoice();
-    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady, YVD.settings.isNaturalVoice(voice));
-    if (engine !== 'google' && engine !== 'piper') return;
+    const engine = pickEngine(voice);
+    if (engine !== 'google' && engine !== 'piper' && engine !== 'vieneu') return;
     const texts = [];
     cues.forEach(function (c) {
-      const key = engine + '|' + (c && c.vi);
+      const key = engine + '|' + (engine === 'vieneu' ? cfg.vieneuVoice + '|' : '') + (c && c.vi);
       if (!c || !c.vi || prefetched.indexOf(key) >= 0) return;
       prefetched.push(key);
       texts.push(c.vi);
     });
     while (prefetched.length > 40) prefetched.shift();
-    if (texts.length) sendBg(engine === 'piper' ? { type: 'piper', op: 'prefetch', texts: texts } : { type: 'gtts', op: 'prefetch', texts: texts, engine: 'google' });
+    if (!texts.length) return;
+    if (engine === 'piper') sendBg({ type: 'piper', op: 'prefetch', texts: texts });
+    else if (engine === 'vieneu') sendBg({ type: 'gtts', op: 'prefetch', texts: texts, engine: 'vieneu', voice: cfg.vieneuVoice });
+    else sendBg({ type: 'gtts', op: 'prefetch', texts: texts, engine: 'google' });
   }
 
   function speakCueInner(cue, nextCue) {
@@ -336,8 +431,9 @@
   function startUtterance(cue, nextCue) {
     const id = ++curId;
     const voice = pickVoice();
-    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady, YVD.settings.isNaturalVoice(voice));
-    voiceKey = engine === 'system' ? voice.name : engine === 'google' ? 'google' : engine === 'piper' ? 'piper' : 'fallback';
+    const engine = pickEngine(voice);
+    if (engine !== 'vieneu') noteVieneuFallback();
+    voiceKey = engineKey(engine, voice);
     const plan = planSpeech({
       cue: cue,
       nextCue: nextCue,
@@ -351,7 +447,7 @@
     if (plan.merged) lastCue = nextCue; // the next cue is already covered by this utterance
     speaking = true;
     speakingCue = { start: cue.start, end: plan.end };
-    usingOffscreen = engine === 'google' || engine === 'piper';
+    usingOffscreen = engine === 'google' || engine === 'piper' || engine === 'vieneu';
     dispatch(engine, voice, plan, id);
   }
 
@@ -418,11 +514,41 @@
         }
         finish(id);
       });
+    } else if (engine === 'vieneu') {
+      speakVieneu(voice, plan, id);
     } else if (engine === 'piper') {
       speakPiper(plan, id);
     } else {
       speakChrome(plan, id);
     }
+  }
+
+  // Optional local voice (VieNeu, whole line in one request). A failed line goes at once to what would speak without
+  // VieNeu (Google, else the system voice / Piper / chrome.tts), and VieNeu rests for the cooldown.
+  function speakVieneu(voice, plan, id) {
+    usingFallback = false;
+    usingOffscreen = true;
+    setSuppressed(false); // (re)duck optimistically; undone by the fallback if nothing can speak
+    const key = voiceKey;
+    sendBg({ type: 'gtts', op: 'speak', engine: 'vieneu', voice: cfg.vieneuVoice, text: plan.text, rate: plan.rate, volume: cfg.dubVolume }).then(function (r) {
+      if (id !== curId) {
+        if (r && r.ok === false && !r.cancelled) vieneuFailed(r); // a real failure that beat the cancel: do not lose it
+        return;
+      }
+      if (!r || !r.ok) {
+        vieneuFailed(r);
+        const eng = pickEngine(voice); // VieNeu is in its cooldown now
+        voiceKey = engineKey(eng, voice);
+        usingOffscreen = eng === 'google' || eng === 'piper';
+        dispatch(eng, voice, plan, id);
+        return;
+      }
+      if (!r.cancelled) {
+        const el = playedSeconds(r);
+        if (el > 0) spcByVoice[key] = updateSpc(spcByVoice[key] || DEFAULT_SPC, plan.text.length, el, plan.rate);
+      }
+      finish(id);
+    });
   }
 
   // Live line (Google Meet): queue it, speak when the previous one ends. Freshness first: stale lines and the
@@ -431,6 +557,7 @@
     text = String(text == null ? '' : text).trim();
     if (!active || !text) return;
     liveMode = true;
+    warmVieneu();
     liveQueue.push({ text: text, t: Date.now() });
     liveQueue = trimLiveQueue(liveQueue, LIVE_MAX_WAITING, Date.now(), LIVE_MAX_AGE).queue;
     if (!speaking) liveNext();
@@ -443,12 +570,13 @@
     if (!item || !active) return;
     const id = ++curId;
     const voice = pickVoice();
-    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady, YVD.settings.isNaturalVoice(voice));
-    voiceKey = engine === 'system' ? voice.name : engine === 'google' ? 'google' : engine === 'piper' ? 'piper' : 'fallback';
+    const engine = pickEngine(voice);
+    if (engine !== 'vieneu') noteVieneuFallback();
+    voiceKey = engineKey(engine, voice);
     const plan = { text: item.text, rate: liveRate(cfg.ttsRate, liveQueue.length, cfg.ttsMaxRate), end: 0, merged: false };
     speaking = true;
     speakingCue = { start: 0, end: 0 };
-    usingOffscreen = engine === 'google' || engine === 'piper';
+    usingOffscreen = engine === 'google' || engine === 'piper' || engine === 'vieneu';
     dispatch(engine, voice, plan, id);
     armWatchdog(id, plan);
   }
@@ -496,11 +624,11 @@
     if (wasDown) return; // already on the fallback: no repeated status pill
     const sysVoice = pickVoice();
     if (sysVoice) {
-      onStatus('SubDub: Google tạm chặn, đang dùng giọng ' + sysVoice.name.replace(/^Microsoft\s+/i, '').replace(/\s+-.*$/, '') + ' của máy'); // no un-duck
+      onStatus('SubDub: Google tạm chặn, đang dùng giọng ' + sysVoice.name.replace(/^Microsoft\s+/i, '').replace(/\s+-.*$/, '') + ' của máy' + vieneuHint()); // no un-duck
       return;
     }
     if (piperReady) {
-      onStatus('SubDub: Google tạm chặn, đang dùng giọng offline'); // piper takes over: no un-duck
+      onStatus('SubDub: Google tạm chặn, đang dùng giọng offline' + vieneuHint()); // piper takes over: no un-duck
       return;
     }
     setSuppressed(true);
@@ -604,6 +732,7 @@
     if (on) {
       piperWarmed = false;
       refreshPiperReady();
+      loadVieneuState();
       duck();
       clearInterval(keepAlive);
       keepAlive = setInterval(function () {
@@ -623,19 +752,24 @@
   function configure(s, statusCb) {
     if (cfg.ttsEngine !== s.ttsEngine) {
       googleDownUntil = 0;
+      vieneuDownUntil = 0;
+      lastWarm = 0;
+      announcedVieneu = false;
       announcedGoogle = false;
       duckSuppressed = false;
       piperWarmed = false;
       if (active) cancel(false);
     }
     const oldVol = cfg.dubVolume;
-    cfg = { ttsEngine: s.ttsEngine, ttsVoice: s.ttsVoice, ttsRate: s.ttsRate, duckLevel: s.duckLevel, ttsMaxRate: s.ttsMaxRate, dubVolume: s.dubVolume };
+    const engChanged = cfg.ttsEngine !== s.ttsEngine;
+    cfg = { ttsEngine: s.ttsEngine, ttsVoice: s.ttsVoice, vieneuVoice: s.vieneuVoice || 'Trúc Ly', ttsRate: s.ttsRate, duckLevel: s.duckLevel, ttsMaxRate: s.ttsMaxRate, dubVolume: s.dubVolume };
     // live: change the Google/Piper audio that is playing right now (speechSynthesis/chrome.tts apply from the next line)
     if (active && usingOffscreen && cfg.dubVolume !== oldVol) sendBg({ type: 'gtts', op: 'setVolume', volume: cfg.dubVolume });
     if (statusCb) onStatus = statusCb;
     if (active) {
       duck();
       warmPiper();
+      if (engChanged && cfg.ttsEngine === 'vieneu') refreshVieneu(true);
     }
   }
 

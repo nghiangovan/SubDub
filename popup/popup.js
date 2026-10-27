@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   const S = window.YVD.settings;
+  const V = window.YVD.vieneu;
   const $ = (id) => document.getElementById(id);
 
   function flash(text) {
@@ -45,14 +46,83 @@
   function updateEngineUi() {
     const eng = $('ttsEngine').value;
     $('voiceBox').hidden = !(eng === 'auto' || eng === 'system');
+    $('vieneuBox').hidden = eng !== 'vieneu';
+    updatePromo();
+    if (eng !== 'vieneu') {
+      vnActive = false;
+      clearTimeout(vnTimer);
+    } else if (!vnActive) {
+      vnActive = true; // (voiceschanged calls this again: only the first call starts the polling)
+      pollVieneu('recheck');
+    }
     let hint = '';
-    if (eng === 'google') hint = 'Google Translate TTS: không chính thức, có thể bị giới hạn tần suất; nếu bị chặn sẽ chuyển sang giọng offline (nếu đã tải).';
+    if (eng === 'vieneu') hint = 'Giọng VieNeu chạy ngay trên máy bạn, cần cài thêm một lần. Khi chưa sẵn sàng, SubDub tạm đọc bằng Google.';
+    else if (eng === 'google') hint = 'Google Translate TTS: không chính thức, có thể bị giới hạn tần suất; nếu bị chặn sẽ chuyển sang giọng offline (nếu đã tải).';
     else if (eng === 'piper') hint = 'Giọng Piper tiếng Việt chạy hoàn toàn trên máy: không cần mạng, không giới hạn. Cần tải 1 lần.';
     else if (eng === 'system' && !hasVoices) hint = 'Không tìm thấy giọng tiếng Việt trên hệ thống: dùng giọng offline (nếu đã tải) hoặc chrome.tts.';
     else if (eng === 'auto' && !hasVoices) hint = 'Máy chưa có giọng tiếng Việt: dùng Google Translate, tự chuyển sang giọng offline khi Google lỗi. Mẹo: cài giọng tiếng Việt của Windows (Settings → Time & language → Speech → Add voices) để có giọng dự phòng tức thì, không cần tải.';
     else if (eng === 'auto' && hasVoices && !hasNatural) hint = 'Đọc bằng Google Translate. Khi Google tạm chặn sẽ chuyển ngay sang giọng có sẵn của máy (ô trên), không cần tải gì. Chọn "Giọng hệ thống" nếu muốn luôn dùng giọng của máy.';
     else if ((eng === 'auto' || eng === 'system') && hasNatural) hint = 'Đang dùng giọng Microsoft Natural của Edge (HoaiMy/NamMinh): tự nhiên, miễn phí, cần mạng. Chọn giọng khác ở ô trên nếu muốn.';
     $('voiceHint').textContent = hint;
+  }
+
+  // ---------- optional local voice (VieNeu) ----------
+  let vnTimer = null;
+  let vnActive = false;
+  let vnVoice = '';
+  let vnVoicesKey = '';
+  let promoDismissed = false;
+  const openGuide = () => chrome.tabs.create({ url: chrome.runtime.getURL('popup/vieneu.html') });
+  function updatePromo() {
+    $('vieneuPromo').hidden = promoDismissed || $('ttsEngine').value === 'vieneu';
+  }
+  function fillVieneuVoices(fromHost) {
+    const list = V.voiceList(fromHost);
+    const key = list.map((v) => v.name + '|' + v.description).join(';');
+    if (key !== vnVoicesKey) {
+      vnVoicesKey = key;
+      const sel = $('vieneuVoice');
+      sel.textContent = '';
+      list.forEach((v) => {
+        const o = document.createElement('option');
+        o.value = v.name;
+        o.textContent = V.voiceLabel(v);
+        sel.appendChild(o);
+      });
+    }
+    $('vieneuVoice').value = list.some((v) => v.name === vnVoice) ? vnVoice : list[0].name;
+  }
+  function renderVieneu(r) {
+    const d = V.describe(r);
+    const st = $('vieneuStatus');
+    st.textContent = d.text;
+    st.className = 'hint' + (d.level === 'ok' ? ' ok' : d.level === 'bad' ? ' bad' : '');
+    if (d.guide) {
+      const a = document.createElement('a');
+      a.className = 'link';
+      a.textContent = 'Xem hướng dẫn';
+      a.addEventListener('click', openGuide);
+      st.appendChild(a);
+    }
+    $('vieneuProgress').hidden = !(r && r.state === 'downloading');
+    $('vieneuProgress').value = d.pct;
+    $('vieneuDownload').hidden = !d.download;
+    $('vieneuDownload').disabled = false;
+  }
+  // op 'recheck' reconnects from scratch (also finds a program installed meanwhile); 'status' only reads
+  function pollVieneu(op) {
+    clearTimeout(vnTimer);
+    if ($('ttsEngine').value !== 'vieneu') return;
+    chrome.runtime.sendMessage({ type: 'vieneu', op: op || 'status' }, (r) => {
+      void chrome.runtime.lastError;
+      if ($('ttsEngine').value !== 'vieneu') return;
+      const ok = r && r.ok;
+      renderVieneu(ok ? r : { state: 'error', error: 'không kết nối được với nền của tiện ích' });
+      if (ok && r.voices && r.voices.length) fillVieneuVoices(r.voices);
+      const busy = ok && (r.state === 'loading' || r.state === 'downloading' || !r.state);
+      clearTimeout(vnTimer);
+      vnTimer = setTimeout(pollVieneu, busy ? 700 : 3000);
+    });
   }
 
   // ---------- on-device translator (Chrome Translator API) ----------
@@ -216,6 +286,10 @@
     refreshTranslator();
     pollPiper();
     fillVoices(s.ttsVoice);
+    vnVoice = s.vieneuVoice;
+    fillVieneuVoices(null);
+    promoDismissed = await new Promise((res) => chrome.storage.local.get('vieneuPromoDismissed', (o) => res(!!(o && o.vieneuPromoDismissed))));
+    updatePromo();
     if (window.speechSynthesis) speechSynthesis.addEventListener('voiceschanged', () => fillVoices($('ttsVoice').value || s.ttsVoice));
     if (await S.getApiKey()) $('claudeKey').placeholder = 'Đã lưu (nhập để thay)';
 
@@ -256,6 +330,27 @@
       S.set({ ttsEngine: e.target.value });
     });
     $('ttsVoice').addEventListener('change', (e) => S.set({ ttsVoice: e.target.value }));
+    $('vieneuVoice').addEventListener('change', (e) => {
+      vnVoice = e.target.value;
+      S.set({ vieneuVoice: vnVoice });
+    });
+    $('vieneuRecheck').addEventListener('click', () => {
+      $('vieneuStatus').textContent = 'VieNeu: đang kiểm tra…';
+      pollVieneu('recheck');
+    });
+    $('vieneuDownload').addEventListener('click', () => {
+      $('vieneuDownload').disabled = true;
+      chrome.runtime.sendMessage({ type: 'vieneu', op: 'download' }, () => {
+        void chrome.runtime.lastError;
+        pollVieneu('status');
+      });
+    });
+    $('vieneuPromoGuide').addEventListener('click', openGuide);
+    $('vieneuPromoClose').addEventListener('click', () => {
+      promoDismissed = true;
+      updatePromo();
+      chrome.storage.local.set({ vieneuPromoDismissed: true }, () => void chrome.runtime.lastError);
+    });
     // Sliders: the label follows the drag live; storage.sync (quota 120 writes/min) is written once per gesture
     // ('change' on release/key step) with a 300 ms debounce on 'input' as the live-ish path while dragging.
     [['ttsRate', 'ttsRate'], ['duckLevel', 'duckLevel'], ['dubVolume', 'dubVolume'], ['fontSize', 'fontSize'], ['subBgOpacity', 'subBgOpacity'], ['ttsMaxRate', 'ttsMaxRate'], ['dubMaxSpeed', 'dubMaxSpeed']].forEach(([id, key]) => {

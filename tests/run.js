@@ -11,6 +11,7 @@ const PT = require(path.join('..', 'lib', 'piper-text.js'));
 const LT = require(path.join('..', 'lib', 'local-translate.js'));
 const SEN = require(path.join('..', 'lib', 'sentences.js'));
 const LTR = require(path.join('..', 'content', 'livetr.js'));
+const VN = require(path.join('..', 'lib', 'vieneu.js'));
 const fs = require('fs');
 
 let passed = 0;
@@ -961,7 +962,9 @@ test('manifest: MV3, wasm CSP, HF + hf.co host permissions, every referenced fil
   assert.strictEqual(m.content_security_policy.extension_pages, "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
   ['https://huggingface.co/*', 'https://*.hf.co/*'].forEach((h) => assert.ok(m.host_permissions.includes(h), h));
   assert.ok(m.permissions.includes('offscreen'));
-  const files = [m.background.service_worker, m.action.default_popup];
+  assert.ok(m.permissions.includes('nativeMessaging'), 'native bridge to the optional VieNeu program');
+  assert.strictEqual(m.version, '0.5.0');
+  const files = [m.background.service_worker, m.action.default_popup, 'popup/vieneu.html', 'popup/vieneu.js', 'popup/vieneu.css', 'lib/vieneu.js'];
   m.content_scripts.forEach((cs) => files.push(...(cs.js || []), ...(cs.css || [])));
   Object.values(m.icons).forEach((f) => files.push(f));
   files.forEach((f) => assert.ok(fs.existsSync(path.join(root, f)), 'missing ' + f));
@@ -971,7 +974,7 @@ test('manifest: MV3, wasm CSP, HF + hf.co host permissions, every referenced fil
 
 test('no remote scripts: html pages load only local scripts', () => {
   const root = path.join(__dirname, '..');
-  ['offscreen.html', 'popup/popup.html'].forEach((f) => {
+  ['offscreen.html', 'popup/popup.html', 'popup/vieneu.html'].forEach((f) => {
     const html = fs.readFileSync(path.join(root, f), 'utf8');
     const srcs = [...html.matchAll(/<script[^>]*\bsrc="([^"]+)"/g)].map((x) => x[1]);
     assert.ok(srcs.length > 0);
@@ -1098,11 +1101,16 @@ function loadOffscreen() {
     load() {}
   }
   const fetches = [];
+  const sent = []; // messages the offscreen document sends to the service worker: { msg, cb }
   const sb = {
-    chrome: { runtime: { id: 'x', onMessage: { addListener: (f) => listeners.push(f) } } },
+    chrome: { runtime: { id: 'x', lastError: null, onMessage: { addListener: (f) => listeners.push(f) }, sendMessage: (msg, cb) => sent.push({ msg, cb }) } },
+    atob,
     Audio: FakeAudio,
     URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
-    Blob: function Blob() {},
+    Blob: function Blob(parts, opts) {
+      this.parts = parts;
+      this.type = opts && opts.type;
+    },
     AbortController,
     setTimeout,
     clearTimeout,
@@ -1121,7 +1129,7 @@ function loadOffscreen() {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'offscreen.js'), 'utf8'), sb);
   const call = (msg) => new Promise((res) => listeners[0](Object.assign({ target: 'offscreen' }, msg), { id: 'x' }, res));
   const tick = () => new Promise((r) => setImmediate(r));
-  return { call, tick, audios, fetches };
+  return { call, tick, audios, fetches, sent };
 }
 
 test('Y3 offscreen: pause during the first chunk fetch holds playback until resume; AbortError from pause is not a failure', async () => {
@@ -1194,6 +1202,591 @@ test('Y4 offscreen: one failure does not open the breaker; a success resets the 
   await o.tick();
   o.audios[0].onended();
   assert.strictEqual((await s2).ok, true);
+});
+
+
+// ---------- optional local VieNeu voice ----------
+test('resolveEngine: vieneu uses the local voice only when selected and ready; otherwise Google, then the usual fallback', () => {
+  assert.strictEqual(D.resolveEngine('vieneu', false, false, false, false, true), 'vieneu');
+  assert.strictEqual(D.resolveEngine('vieneu', true, false, true, true, true), 'vieneu'); // beats a Natural system voice
+  assert.strictEqual(D.resolveEngine('vieneu', true, true, true, false, true), 'vieneu'); // ...and Google being down
+  // not ready (not installed / downloading / error / cooldown after a failed line): Google at once
+  assert.strictEqual(D.resolveEngine('vieneu', false, false, false, false, false), 'google');
+  assert.strictEqual(D.resolveEngine('vieneu', true, false, true, false, false), 'google');
+  assert.strictEqual(D.resolveEngine('vieneu', false, false, false, false), 'google'); // param omitted
+  // Google down as well: system voice, else Piper, else chrome.tts
+  assert.strictEqual(D.resolveEngine('vieneu', true, true, true, false, false), 'system');
+  assert.strictEqual(D.resolveEngine('vieneu', false, true, true, false, false), 'piper');
+  assert.strictEqual(D.resolveEngine('vieneu', false, true, false, false, false), 'chrome');
+});
+
+test('resolveEngine: auto / google / system / piper never pick vieneu, even when it is ready', () => {
+  ['auto', 'google', 'system', 'piper', undefined].forEach((setting) => {
+    [false, true].forEach((hasVi) =>
+      [false, true].forEach((gDown) =>
+        [false, true].forEach((piper) =>
+          [false, true].forEach((nat) => {
+            const withV = D.resolveEngine(setting, hasVi, gDown, piper, nat, true);
+            assert.notStrictEqual(withV, 'vieneu');
+            assert.strictEqual(withV, D.resolveEngine(setting, hasVi, gDown, piper, nat, false), 'vieneuReady must not change ' + setting);
+          })
+        )
+      )
+    );
+  });
+});
+
+test('VieNeu cooldown reuses the Google helpers: 60 s, then VieNeu is tried again', () => {
+  assert.strictEqual(D.VIENEU_COOLDOWN, 60000);
+  const t0 = 5000000;
+  const until = D.cooldownEnd(t0, D.VIENEU_COOLDOWN);
+  const ready = (now) => !D.googleIsDown(until, now);
+  assert.strictEqual(D.resolveEngine('vieneu', false, false, false, false, ready(t0 + 1000)), 'google');
+  assert.strictEqual(D.resolveEngine('vieneu', false, false, false, false, ready(t0 + 60000)), 'vieneu');
+});
+
+test('settings: vieneu engine and voice (default Trúc Ly) survive normalize; unknown engines still fall back to auto', () => {
+  assert.strictEqual(S.DEFAULTS.ttsEngine, 'auto');
+  assert.strictEqual(S.DEFAULTS.vieneuVoice, 'Trúc Ly');
+  assert.strictEqual(S.normalize({}).vieneuVoice, 'Trúc Ly');
+  assert.strictEqual(S.normalize({ ttsEngine: 'vieneu' }).ttsEngine, 'vieneu');
+  assert.strictEqual(S.normalize({ vieneuVoice: 'Adam' }).vieneuVoice, 'Adam');
+  assert.strictEqual(S.normalize({ vieneuVoice: '' }).vieneuVoice, 'Trúc Ly');
+  assert.strictEqual(S.normalize({ ttsEngine: 'nope' }).ttsEngine, 'auto');
+});
+
+test('vieneu helpers: 11 fallback voices, labels from the description, one status text per state', () => {
+  assert.strictEqual(VN.FALLBACK_VOICES.length, 11);
+  assert.strictEqual(VN.FALLBACK_VOICES[0].name, 'Trúc Ly');
+  assert.strictEqual(VN.voiceLabel({ name: 'Trúc Ly', description: 'Nữ · Bắc · Phong cách tự nhiên' }), 'Trúc Ly (Nữ, miền Bắc)');
+  assert.strictEqual(VN.voiceLabel({ name: 'X', gender: 'male' }), 'X (Nam)');
+  assert.strictEqual(VN.voiceLabel({ name: 'Y' }), 'Y');
+  assert.strictEqual(VN.voiceList([]), VN.FALLBACK_VOICES);
+  assert.strictEqual(VN.voiceList(null), VN.FALLBACK_VOICES);
+  const host = [{ name: 'A', description: '' }];
+  assert.strictEqual(VN.voiceList(host), host);
+  assert.strictEqual(VN.describe({ state: 'not-installed' }).text, 'VieNeu: chưa cài');
+  assert.strictEqual(VN.describe({ state: 'not-installed' }).guide, true);
+  assert.strictEqual(VN.describe({ state: 'downloading', progress: 0.349 }).text, 'VieNeu: đang tải mô hình 35%');
+  assert.strictEqual(VN.describe({ state: 'loading' }).text, 'VieNeu: đang khởi động…');
+  assert.strictEqual(VN.describe({ state: 'ready' }).text, 'VieNeu: sẵn sàng ✓');
+  assert.strictEqual(VN.describe({ state: 'error', error: 'hết bộ nhớ' }).text, 'VieNeu: lỗi: hết bộ nhớ');
+  assert.strictEqual(VN.describe({ state: 'missing' }).download, true);
+  assert.strictEqual(VN.describe(null).level, 'wait');
+});
+
+test('popup / guide page: every id used by the scripts exists in their html; guide is CSP-safe and complete', () => {
+  const root = path.join(__dirname, '..');
+  [['popup/popup.html', 'popup/popup.js'], ['popup/vieneu.html', 'popup/vieneu.js']].forEach(([h, j]) => {
+    const html = fs.readFileSync(path.join(root, h), 'utf8');
+    const js = fs.readFileSync(path.join(root, j), 'utf8');
+    const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((x) => x[1]));
+    [...js.matchAll(/\$\('([A-Za-z0-9_]+)'\)/g)].forEach((x) => assert.ok(ids.has(x[1]), j + ' uses missing #' + x[1]));
+    assert.ok(!/\son[a-z]+="/.test(html), h + ' has an inline event handler');
+  });
+  const pop = fs.readFileSync(path.join(root, 'popup/popup.html'), 'utf8');
+  assert.ok(pop.includes('<option value="vieneu">VieNeu – giọng mượt (cần cài thêm)</option>'));
+  assert.ok(pop.includes('Muốn giọng đọc mượt hơn, không bị Google chặn? Cài giọng VieNeu (miễn phí, ~550 MB).'));
+  const guide = fs.readFileSync(path.join(root, 'popup/vieneu.html'), 'utf8');
+  ['Cai-giong-VieNeu.bat', 'Go-giong-VieNeu.bat', 'Thông tin thêm', 'Vẫn chạy', '550 MB', '0,6 GB'].forEach((t) => assert.ok(guide.includes(t), 'guide misses ' + t));
+});
+
+const plain = (x) => JSON.parse(JSON.stringify(x)); // objects made inside a vm context have another prototype
+// background.js under a mocked chrome: the native-messaging bridge to the VieNeu program
+function loadBackground(opts) {
+  opts = opts || {};
+  const vm = require('vm');
+  const listeners = [];
+  const store = {};
+  const ports = [];
+  const timers = [];
+  const toOffscreen = [];
+  let tid = 0;
+  const chromeMock = {
+    runtime: {
+      id: 'x',
+      lastError: null,
+      onMessage: { addListener: (f) => listeners.push(f) },
+      getContexts: async () => [{}], // pretend the offscreen document exists
+      sendMessage: async (m) => {
+        toOffscreen.push(m);
+        return { ok: true };
+      },
+      connectNative: (name) => {
+        if (opts.throwNotFound) throw new Error('Specified native messaging host not found.');
+        const port = {
+          name,
+          posted: [],
+          disconnected: false,
+          msgL: [],
+          discL: [],
+          onMessage: { addListener: (f) => port.msgL.push(f) },
+          onDisconnect: { addListener: (f) => port.discL.push(f) },
+          postMessage: (m) => port.posted.push(m),
+          disconnect: () => (port.disconnected = true),
+          emit: (m) => port.msgL.forEach((f) => f(m)),
+          drop: (err) => {
+            chromeMock.runtime.lastError = err ? { message: err } : null;
+            port.discL.forEach((f) => f(port));
+            chromeMock.runtime.lastError = null;
+          }
+        };
+        ports.push(port);
+        return port;
+      }
+    },
+    storage: {
+      local: {
+        get: (k, cb) => cb(typeof k === 'string' ? (k in store ? { [k]: store[k] } : {}) : {}),
+        set: (o, cb) => (Object.assign(store, o), cb && cb()),
+        remove: (k, cb) => ((Array.isArray(k) ? k : [k]).forEach((x) => delete store[x]), cb && cb())
+      }
+    },
+    tts: { stop() {}, speak() {} },
+    offscreen: { createDocument: async () => {} }
+  };
+  const sb = {
+    chrome: chromeMock,
+    importScripts() {},
+    self: {},
+    Promise,
+    setTimeout: (f, ms) => {
+      const t = { f, ms, id: ++tid };
+      timers.push(t);
+      return t;
+    },
+    clearTimeout: (t) => {
+      const i = timers.indexOf(t);
+      if (i >= 0) timers.splice(i, 1);
+    },
+    console
+  };
+  sb.YVD = {};
+  vm.createContext(sb);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8'), sb);
+  const call = (msg) => new Promise((res) => listeners[0](msg, { id: 'x' }, res));
+  const tick = () => new Promise((r) => setImmediate(r));
+  const fire = (ms) => timers.filter((t) => t.ms === ms).forEach((t) => (timers.splice(timers.indexOf(t), 1), t.f()));
+  return { call, tick, fire, ports, store, timers, toOffscreen, listeners };
+}
+const HELLO = { type: 'hello', proto: 1, state: 'ready', progress: 1, voices: [{ name: 'Trúc Ly', gender: 'female', description: 'Nữ · Bắc' }], defaultVoice: 'Trúc Ly', steps: 16 };
+async function readyBridge(extra) {
+  const b = loadBackground(extra);
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  b.ports[0].emit(Object.assign({}, HELLO));
+  await st;
+  return b;
+}
+
+test('vieneu bridge: connects lazily with the host name, says hello, reports state + voices and mirrors the state to storage', async () => {
+  const b = loadBackground();
+  assert.strictEqual(b.ports.length, 0, 'no connection before the first request');
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  assert.strictEqual(b.ports.length, 1);
+  assert.strictEqual(b.ports[0].name, 'com.subdub.vieneu');
+  assert.deepStrictEqual(plain(b.ports[0].posted), [{ type: 'hello' }]);
+  b.ports[0].emit(Object.assign({}, HELLO, { state: 'loading', progress: 0.5 }));
+  const r = await st;
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.state, 'loading');
+  assert.strictEqual(r.voices[0].name, 'Trúc Ly');
+  assert.strictEqual(r.defaultVoice, 'Trúc Ly');
+  assert.strictEqual(r.steps, 16);
+  assert.strictEqual(b.store.vieneuState, 'loading');
+  b.ports[0].emit({ type: 'status', state: 'downloading', progress: 0.35 });
+  assert.strictEqual(b.store.vieneuState, 'downloading');
+  const r2 = await b.call({ type: 'vieneu', op: 'status' });
+  assert.strictEqual(r2.progress, 0.35);
+  assert.strictEqual(b.ports.length, 1, 'the open connection is reused');
+  b.ports[0].emit({ type: 'status', state: 'ready', progress: 1 });
+  assert.strictEqual(b.store.vieneuState, 'ready');
+});
+
+test('vieneu bridge: synth sends one speak request and reassembles audio parts (also out of order)', async () => {
+  const b = await readyBridge();
+  const p = b.call({ type: 'vieneu', op: 'synth', text: 'Xin chào các bạn', voice: 'Adam', prio: 0 });
+  await b.tick();
+  const speak = b.ports[0].posted.find((m) => m.type === 'speak');
+  assert.ok(speak && speak.id);
+  assert.strictEqual(speak.text, 'Xin chào các bạn');
+  assert.strictEqual(speak.voice, 'Adam');
+  assert.strictEqual(speak.prio, 0);
+  b.ports[0].emit({ type: 'audio', id: speak.id, part: 1, parts: 3, sr: 24000, dur: 1.5, b64: 'BBBB' });
+  b.ports[0].emit({ type: 'audio', id: speak.id, part: 0, parts: 3, sr: 24000, dur: 1.5, b64: 'AAAA' });
+  b.ports[0].emit({ type: 'audio', id: speak.id, part: 2, parts: 3, sr: 24000, dur: 1.5, b64: 'CC==' });
+  const r = await p;
+  assert.deepStrictEqual([r.ok, r.b64, r.dur], [true, 'AAAABBBBCC==', 1.5]);
+  // prefetch priority + two requests at once get their own ids
+  const p1 = b.call({ type: 'vieneu', op: 'synth', text: 'một', voice: 'Adam', prio: 1 });
+  const p2 = b.call({ type: 'vieneu', op: 'synth', text: 'hai', voice: 'Adam', prio: 0 });
+  await b.tick();
+  const reqs = b.ports[0].posted.filter((m) => m.type === 'speak').slice(1);
+  assert.strictEqual(reqs.length, 2);
+  assert.notStrictEqual(reqs[0].id, reqs[1].id);
+  assert.strictEqual(reqs[0].prio, 1);
+  b.ports[0].emit({ type: 'error', id: reqs[0].id, error: 'cancelled' });
+  b.ports[0].emit({ type: 'audio', id: reqs[1].id, part: 0, parts: 1, b64: 'ZZZZ' });
+  const [e1, e2] = [await p1, await p2];
+  assert.deepStrictEqual([e1.ok, e1.error, e1.cancelled], [false, 'cancelled', true]);
+  assert.strictEqual(e2.b64, 'ZZZZ');
+});
+
+test('vieneu bridge: a host error fails only that request; empty text is refused; cancel is forwarded', async () => {
+  const b = await readyBridge();
+  const p = b.call({ type: 'vieneu', op: 'synth', text: 'lỗi', voice: 'Adam' });
+  await b.tick();
+  const id = b.ports[0].posted.find((m) => m.type === 'speak').id;
+  b.ports[0].emit({ type: 'error', id, error: 'boom' });
+  assert.deepStrictEqual(plain(await p), { ok: false, error: 'boom', cancelled: false });
+  assert.strictEqual((await b.call({ type: 'vieneu', op: 'synth', text: '  ' })).ok, false);
+  assert.deepStrictEqual(plain(await b.call({ type: 'vieneu', op: 'cancel' })), { ok: true });
+  assert.deepStrictEqual(plain(b.ports[0].posted[b.ports[0].posted.length - 1]), { type: 'cancel' });
+  assert.strictEqual((await b.call({ type: 'vieneu', op: 'wat' })).ok, false);
+});
+
+test('vieneu bridge: a synth request waits while the model is loading, then goes out; missing/error fail at once', async () => {
+  const b = loadBackground();
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  b.ports[0].emit(Object.assign({}, HELLO, { state: 'loading' }));
+  await st;
+  const p = b.call({ type: 'vieneu', op: 'synth', text: 'đợi chút', voice: 'Adam' });
+  await b.tick();
+  assert.ok(!b.ports[0].posted.some((m) => m.type === 'speak'), 'not sent while loading');
+  b.ports[0].emit({ type: 'status', state: 'ready', progress: 1 });
+  await b.tick();
+  const id = b.ports[0].posted.find((m) => m.type === 'speak').id;
+  b.ports[0].emit({ type: 'audio', id, part: 0, parts: 1, b64: 'QQQQ' });
+  assert.strictEqual((await p).b64, 'QQQQ');
+  b.ports[0].emit({ type: 'status', state: 'missing', progress: 0 });
+  const r = await b.call({ type: 'vieneu', op: 'synth', text: 'không có mô hình', voice: 'Adam' });
+  assert.deepStrictEqual([r.ok, r.error], [false, 'vieneu-missing']);
+});
+
+test('vieneu bridge: "host not found" at disconnect means not-installed; polling does not respawn, recheck does', async () => {
+  const b = loadBackground();
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  b.ports[0].drop('Specified native messaging host not found.');
+  const r = await st;
+  assert.strictEqual(r.state, 'not-installed');
+  assert.strictEqual(b.store.vieneuState, 'not-installed');
+  const again = await b.call({ type: 'vieneu', op: 'status' });
+  assert.strictEqual(again.state, 'not-installed');
+  assert.strictEqual(b.ports.length, 1, 'status polling must not reconnect to a program that is not there');
+  const rc = b.call({ type: 'vieneu', op: 'recheck' }); // the user installed it meanwhile
+  await b.tick();
+  assert.strictEqual(b.ports.length, 2);
+  b.ports[1].emit(Object.assign({}, HELLO));
+  assert.strictEqual((await rc).state, 'ready');
+  assert.strictEqual(b.store.vieneuState, 'ready');
+});
+
+test('vieneu bridge: connectNative throwing "not found" is not-installed too; synth reports it', async () => {
+  const b = loadBackground({ throwNotFound: true });
+  const r = await b.call({ type: 'vieneu', op: 'status' });
+  assert.strictEqual(r.state, 'not-installed');
+  const s = await b.call({ type: 'vieneu', op: 'synth', text: 'xin chào', voice: 'Adam' });
+  assert.deepStrictEqual([s.ok, s.error], [false, 'not-installed']);
+});
+
+test('vieneu bridge: requests pending at disconnect fail; a crash is state "error" and the next synth reconnects', async () => {
+  const b = await readyBridge();
+  const p1 = b.call({ type: 'vieneu', op: 'synth', text: 'một', voice: 'Adam' });
+  const p2 = b.call({ type: 'vieneu', op: 'synth', text: 'hai', voice: 'Adam', prio: 1 });
+  await b.tick();
+  b.ports[0].drop('Native host has exited.');
+  const [r1, r2] = [await p1, await p2];
+  assert.strictEqual(r1.ok, false);
+  assert.strictEqual(r2.ok, false);
+  assert.ok(/disconnect/.test(r1.error));
+  assert.strictEqual(b.store.vieneuState, 'error');
+  assert.strictEqual((await b.call({ type: 'vieneu', op: 'status' })).state, 'error');
+  assert.strictEqual(b.ports.length, 1, 'status does not respawn a crashed program');
+  const p3 = b.call({ type: 'vieneu', op: 'synth', text: 'ba', voice: 'Adam' });
+  await b.tick();
+  assert.strictEqual(b.ports.length, 2, 'synth reconnects');
+  b.ports[1].emit(Object.assign({}, HELLO));
+  await b.tick();
+  const id = b.ports[1].posted.find((m) => m.type === 'speak').id;
+  b.ports[1].emit({ type: 'audio', id, part: 0, parts: 1, b64: 'RRRR' });
+  assert.strictEqual((await p3).b64, 'RRRR');
+  assert.strictEqual(b.store.vieneuState, 'ready');
+});
+
+test('vieneu bridge: disconnects after 2 minutes without a synth request and reconnects on the next one', async () => {
+  const b = await readyBridge();
+  const p = b.call({ type: 'vieneu', op: 'synth', text: 'một', voice: 'Adam' });
+  await b.tick();
+  const id = b.ports[0].posted.find((m) => m.type === 'speak').id;
+  b.ports[0].emit({ type: 'audio', id, part: 0, parts: 1, b64: 'AAAA' });
+  await p;
+  assert.ok(b.timers.some((t) => t.ms === 2 * 60 * 1000), 'idle timer armed');
+  assert.strictEqual(b.ports[0].disconnected, false);
+  const slow = b.call({ type: 'vieneu', op: 'synth', text: 'đang chờ', voice: 'Adam' });
+  await b.tick();
+  b.fire(2 * 60 * 1000); // idle: the program is released (frees ~0.6 GB RAM)
+  assert.strictEqual(b.ports[0].disconnected, true);
+  assert.strictEqual((await slow).ok, false, 'a request still pending at the idle disconnect fails');
+  const p2 = b.call({ type: 'vieneu', op: 'synth', text: 'hai', voice: 'Adam' });
+  await b.tick();
+  assert.strictEqual(b.ports.length, 2);
+  b.ports[1].emit(Object.assign({}, HELLO));
+  await b.tick();
+  const id2 = b.ports[1].posted.find((m) => m.type === 'speak').id;
+  b.ports[1].emit({ type: 'audio', id: id2, part: 0, parts: 1, b64: 'BBBB' });
+  assert.strictEqual((await p2).b64, 'BBBB');
+});
+
+test('vieneu bridge: a program that never answers hello is reported as an error, not as ready', async () => {
+  const b = loadBackground();
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  b.fire(10000);
+  const r = await st;
+  assert.strictEqual(r.state, 'error');
+  assert.ok(r.error);
+});
+
+test('vieneu bridge: download is forwarded to the program; gtts speak/prefetch pass engine and voice to the offscreen document', async () => {
+  const b = await readyBridge();
+  await b.call({ type: 'vieneu', op: 'download' });
+  assert.deepStrictEqual(plain(b.ports[0].posted[b.ports[0].posted.length - 1]), { type: 'download' });
+  await b.call({ type: 'gtts', op: 'speak', engine: 'vieneu', voice: 'Adam', text: 'xin chào', rate: 1.2, volume: 0.5 });
+  await b.call({ type: 'gtts', op: 'prefetch', engine: 'vieneu', voice: 'Adam', texts: ['a'] });
+  await b.call({ type: 'gtts', op: 'speak', engine: 'whatever', text: 'x' });
+  const m = b.toOffscreen;
+  assert.deepStrictEqual([m[0].engine, m[0].voice, m[0].target, m[0].op], ['vieneu', 'Adam', 'offscreen', 'speak']);
+  assert.strictEqual(m[1].engine, 'vieneu');
+  assert.strictEqual(m[2].engine, 'google', 'unknown engines stay Google');
+});
+
+test('vieneu routing: the service worker handles offscreen requests without target, and ignores target:"offscreen"', async () => {
+  const b = await readyBridge();
+  let answered = false;
+  const ret = b.listeners[0]({ type: 'vieneu', op: 'cancel', target: 'offscreen' }, { id: 'x' }, () => (answered = true));
+  assert.strictEqual(ret, false);
+  assert.strictEqual(answered, false);
+  assert.strictEqual(b.listeners[0]({ type: 'vieneu', op: 'cancel' }, { id: 'x' }, () => {}), true);
+  assert.strictEqual(b.listeners[0]({ type: 'vieneu', op: 'cancel' }, { id: 'other' }, () => {}), false);
+});
+
+test('offscreen vieneu: speak sends one whole-line request, plays the WAV through playChunk, reuses the blob from the cache', async () => {
+  const o = loadOffscreen();
+  const sp = o.call({ op: 'speak', engine: 'vieneu', voice: 'Adam', text: 'Xin chào các bạn. Hôm nay trời đẹp.', rate: 1.25 });
+  await o.tick();
+  assert.strictEqual(o.sent.length, 1, 'the whole line in one request (the program chunks it)');
+  assert.deepStrictEqual(plain(o.sent[0].msg), { type: 'vieneu', op: 'synth', text: 'Xin chào các bạn. Hôm nay trời đẹp.', voice: 'Adam', prio: 0 });
+  assert.strictEqual(o.fetches.length, 0, 'no Google request');
+  o.sent[0].cb({ ok: true, b64: 'UklGRg==' });
+  await o.tick();
+  await o.tick();
+  assert.strictEqual(o.audios.length, 1);
+  assert.strictEqual(o.audios[0].playbackRate, 1.25);
+  o.audios[0].onplaying();
+  o.audios[0].onended();
+  const r = await sp;
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.chars, 35);
+  // same voice + text again: cached, no new request; another voice is a different entry
+  const sp2 = o.call({ op: 'speak', engine: 'vieneu', voice: 'Adam', text: 'Xin chào các bạn. Hôm nay trời đẹp.', rate: 1 });
+  await o.tick();
+  await o.tick();
+  assert.strictEqual(o.sent.length, 1);
+  o.audios[1].onended();
+  assert.strictEqual((await sp2).ok, true);
+  const sp3 = o.call({ op: 'speak', engine: 'vieneu', voice: 'Mai Anh', text: 'Xin chào các bạn. Hôm nay trời đẹp.', rate: 1 });
+  await o.tick();
+  assert.strictEqual(o.sent.length, 2);
+  assert.strictEqual(o.sent[1].msg.voice, 'Mai Anh');
+  o.sent[1].cb({ ok: false, error: 'x' });
+  await sp3;
+});
+
+test('offscreen vieneu: failures return {ok:false,error} (so the dubber falls back) and are never cached', async () => {
+  const o = loadOffscreen();
+  const sp = o.call({ op: 'speak', engine: 'vieneu', voice: 'Trúc Ly', text: 'lỗi rồi', rate: 1 });
+  await o.tick();
+  o.sent[0].cb({ ok: false, error: 'not-installed' });
+  const r = await sp;
+  assert.deepStrictEqual([r.ok, r.error], [false, 'not-installed']);
+  assert.strictEqual(r.retryAt, 0);
+  const sp2 = o.call({ op: 'speak', engine: 'vieneu', voice: 'Trúc Ly', text: 'lỗi rồi', rate: 1 });
+  await o.tick();
+  assert.strictEqual(o.sent.length, 2, 'asked again, not served from a cached failure');
+  o.sent[1].cb(undefined); // no answer from the service worker
+  assert.strictEqual((await sp2).ok, false);
+});
+
+test('offscreen vieneu: default voice, prefetch at low priority, and a spoken line upgrades its queued prefetch', async () => {
+  const o = loadOffscreen();
+  await o.call({ op: 'prefetch', engine: 'vieneu', texts: ['câu một', 'câu hai', '  '] });
+  assert.strictEqual(o.sent.length, 2);
+  assert.deepStrictEqual(o.sent.map((x) => [x.msg.prio, x.msg.voice, x.msg.text]), [[1, 'Trúc Ly', 'câu một'], [1, 'Trúc Ly', 'câu hai']]);
+  await o.call({ op: 'prefetch', engine: 'vieneu', texts: ['câu một'] });
+  assert.strictEqual(o.sent.length, 2, 'already requested');
+  // the same line is now spoken: a prio-0 request for the same text goes out (the program upgrades the queued job)
+  const sp = o.call({ op: 'speak', engine: 'vieneu', text: 'câu một', rate: 1 });
+  await o.tick();
+  assert.strictEqual(o.sent.length, 3);
+  assert.deepStrictEqual([o.sent[2].msg.prio, o.sent[2].msg.text], [0, 'câu một']);
+  o.sent[0].cb({ ok: true, b64: 'AAAA' });
+  o.sent[2].cb({ ok: true, b64: 'AAAA' }); // the duplicate's reply is ignored
+  await o.tick();
+  await o.tick();
+  assert.strictEqual(o.audios.length, 1);
+  o.audios[0].onended();
+  assert.strictEqual((await sp).ok, true);
+  // once the prefetch has finished, speaking the line needs nothing more
+  o.sent[1].cb({ ok: true, b64: 'BBBB' });
+  await o.tick();
+  const sp2 = o.call({ op: 'speak', engine: 'vieneu', text: 'câu hai', rate: 1 });
+  await o.tick();
+  await o.tick();
+  assert.strictEqual(o.sent.length, 3);
+  o.audios[1].onended();
+  await sp2;
+});
+
+test('offscreen vieneu: cancel tells the program to drop prefetches (only once VieNeu was used) and stops the current line', async () => {
+  const o = loadOffscreen();
+  await o.call({ op: 'cancel' });
+  assert.strictEqual(o.sent.length, 0, 'Google/Piper users never wake the bridge');
+  const sp = o.call({ op: 'speak', engine: 'vieneu', text: 'đang đọc', rate: 1 });
+  await o.tick();
+  await o.call({ op: 'cancel' });
+  assert.strictEqual((await sp).cancelled, true);
+  assert.deepStrictEqual(plain(o.sent[o.sent.length - 1].msg), { type: 'vieneu', op: 'cancel' });
+  // an empty line speaks nothing and sends nothing
+  const n = o.sent.length;
+  const e = await o.call({ op: 'speak', engine: 'vieneu', text: '   ', rate: 1 });
+  assert.deepStrictEqual([e.ok, e.chars], [true, 0]);
+  assert.strictEqual(o.sent.length, n);
+});
+
+
+// ---------- amendment: the model runs only while dubbing, and never lags the machine ----------
+test('vieneu bridge: a status check does not warm the model; its connection is dropped ~30 s later and never extended', async () => {
+  const b = await readyBridge({}); // hello says "ready"; only the connection matters here
+  b.ports[0].emit({ type: 'status', state: 'idle', progress: 1 });
+  assert.ok(!b.ports[0].posted.some((m) => m.type === 'warm' || m.type === 'speak'), 'no warm from a status check');
+  assert.ok(b.timers.some((t) => t.ms === 30000), 'short timer armed by the status check');
+  assert.ok(!b.timers.some((t) => t.ms === 2 * 60 * 1000));
+  const t0 = b.timers.find((t) => t.ms === 30000);
+  await b.call({ type: 'vieneu', op: 'status' }); // polling again must not push the drop further away
+  const rc = b.call({ type: 'vieneu', op: 'recheck' });
+  await b.tick();
+  b.ports[0].emit({ type: 'hello', state: 'idle', progress: 1 });
+  assert.strictEqual((await rc).state, 'idle');
+  assert.strictEqual(b.timers.filter((t) => t.ms === 30000).length, 1);
+  assert.strictEqual(b.timers.find((t) => t.ms === 30000), t0);
+  b.fire(30000);
+  assert.strictEqual(b.ports[0].disconnected, true);
+  assert.ok(!b.ports[0].posted.some((m) => m.type === 'warm'));
+  assert.strictEqual(b.store.vieneuState, 'idle', 'installed, model not loaded');
+  // polling afterwards reconnects (a fresh program says hello) without loading anything
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  assert.strictEqual(b.ports.length, 2);
+  b.ports[1].emit(Object.assign({}, HELLO, { state: 'idle' }));
+  assert.strictEqual((await st).state, 'idle');
+  assert.deepStrictEqual(plain(b.ports[1].posted), [{ type: 'hello' }]);
+});
+
+test('vieneu bridge: op warm asks the program to load the model and keeps it for 2 minutes; a status check cannot shorten that', async () => {
+  const b = loadBackground();
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  b.ports[0].emit(Object.assign({}, HELLO, { state: 'idle' }));
+  await st;
+  assert.ok(b.timers.some((t) => t.ms === 30000));
+  const w = await b.call({ type: 'vieneu', op: 'warm' });
+  assert.strictEqual(w.ok, true);
+  assert.deepStrictEqual(plain(b.ports[0].posted[b.ports[0].posted.length - 1]), { type: 'warm' });
+  assert.ok(b.timers.some((t) => t.ms === 2 * 60 * 1000));
+  assert.ok(!b.timers.some((t) => t.ms === 30000), 'the 2-minute timer replaces the status one');
+  await b.call({ type: 'vieneu', op: 'status' });
+  assert.ok(!b.timers.some((t) => t.ms === 30000), 'a status check during dubbing leaves the idle timer alone');
+  b.ports[0].emit({ type: 'status', state: 'loading', progress: 0 });
+  b.ports[0].emit({ type: 'status', state: 'ready', progress: 1 });
+  b.fire(2 * 60 * 1000);
+  assert.strictEqual(b.ports[0].disconnected, true);
+  assert.strictEqual(b.store.vieneuState, 'idle');
+});
+
+test('vieneu bridge: warm never spawns a program that is not installed / crashed (the dubber rechecks instead)', async () => {
+  const b = loadBackground({ throwNotFound: true });
+  await b.call({ type: 'vieneu', op: 'status' });
+  const w = await b.call({ type: 'vieneu', op: 'warm' });
+  assert.strictEqual(w.state, 'not-installed');
+  assert.strictEqual(b.ports.length, 0);
+});
+
+test('vieneu bridge: from state "idle" a synth request is sent at once (the program loads the model for it)', async () => {
+  const b = loadBackground();
+  const st = b.call({ type: 'vieneu', op: 'status' });
+  await b.tick();
+  b.ports[0].emit(Object.assign({}, HELLO, { state: 'idle' }));
+  await st;
+  const p = b.call({ type: 'vieneu', op: 'synth', text: 'dòng đầu tiên', voice: 'Adam' });
+  await b.tick();
+  const speak = b.ports[0].posted.find((m) => m.type === 'speak');
+  assert.ok(speak, 'speak sent without waiting for ready');
+  b.ports[0].emit({ type: 'status', state: 'loading', progress: 0 });
+  b.ports[0].emit({ type: 'status', state: 'ready', progress: 1 });
+  b.ports[0].emit({ type: 'audio', id: speak.id, part: 0, parts: 1, b64: 'AAAA' });
+  assert.strictEqual((await p).ok, true);
+  assert.ok(b.timers.some((t) => t.ms === 2 * 60 * 1000), 'synth keeps the program for 2 minutes');
+});
+
+test('vieneu bridge: low-memory / too-slow fail requests at once with that error and become the state', async () => {
+  const b = await readyBridge();
+  const p = b.call({ type: 'vieneu', op: 'synth', text: 'một dòng', voice: 'Adam' });
+  await b.tick();
+  const id = b.ports[0].posted.find((m) => m.type === 'speak').id;
+  b.ports[0].emit({ type: 'error', id, error: 'low-memory' });
+  const r = await p;
+  assert.deepStrictEqual([r.ok, r.error], [false, 'low-memory']);
+  assert.strictEqual(b.store.vieneuState, 'low-memory');
+  // while in that state nothing is sent to the program
+  const n = b.ports[0].posted.length;
+  const r2 = await b.call({ type: 'vieneu', op: 'synth', text: 'dòng nữa', voice: 'Adam' });
+  assert.deepStrictEqual([r2.ok, r2.error], [false, 'vieneu-low-memory']);
+  assert.strictEqual(b.ports[0].posted.length, n);
+  b.ports[0].emit({ type: 'status', state: 'too-slow', progress: 1 });
+  assert.strictEqual(b.store.vieneuState, 'too-slow');
+  assert.strictEqual((await b.call({ type: 'vieneu', op: 'synth', text: 'x y', voice: 'Adam' })).error, 'vieneu-too-slow');
+  // recheck reconnects from scratch: a fresh program re-measures memory / speed
+  const rc = b.call({ type: 'vieneu', op: 'recheck' });
+  await b.tick();
+  assert.strictEqual(b.ports.length, 2);
+  b.ports[1].emit(Object.assign({}, HELLO, { state: 'idle' }));
+  assert.strictEqual((await rc).state, 'idle');
+});
+
+test('vieneu bridge: the program leaving by itself after a quiet while is "idle", not an error; a crash while busy is', async () => {
+  const b = await readyBridge();
+  b.ports[0].drop('Native host has exited.'); // never asked to synthesise: it timed out by design
+  assert.strictEqual(b.store.vieneuState, 'idle');
+  const p = b.call({ type: 'vieneu', op: 'synth', text: 'một', voice: 'Adam' });
+  await b.tick();
+  b.ports[1].emit(Object.assign({}, HELLO, { state: 'idle' }));
+  await b.tick();
+  b.ports[1].drop('Native host has exited.'); // died with a request in flight
+  assert.strictEqual((await p).ok, false);
+  assert.strictEqual(b.store.vieneuState, 'error');
+});
+
+test('vieneu helpers: idle shows as ready, low-memory / too-slow as a Google fallback with the given texts', () => {
+  const idle = VN.describe({ state: 'idle' });
+  assert.strictEqual(idle.text, 'VieNeu: sẵn sàng ✓ (tự bật khi lồng tiếng)');
+  assert.strictEqual(idle.level, 'ok');
+  assert.strictEqual(VN.describe({ state: 'low-memory' }).text, 'VieNeu: máy đang thiếu RAM, tạm dùng Google');
+  assert.strictEqual(VN.describe({ state: 'too-slow' }).text, 'VieNeu: máy hơi yếu cho VieNeu, tạm dùng Google');
+  assert.notStrictEqual(VN.describe({ state: 'low-memory' }).level, 'ok');
+  assert.strictEqual(VN.describe({ state: 'too-slow' }).guide, false);
 });
 
 Promise.all(pendingTests).then(() => console.log('\n' + passed + ' tests passed' + (process.exitCode ? ' (with failures)' : '')));

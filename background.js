@@ -1,5 +1,6 @@
 /* Service worker: translation requests (avoids page CORS), translation cache, chrome.tts fallback,
- * and the bridge to the offscreen document (Google TTS / Piper TTS / on-device Translator). */
+ * the bridge to the offscreen document (Google TTS / Piper TTS / on-device Translator) and the native-messaging
+ * bridge to the optional local VieNeu voice (only a service worker can call connectNative). */
 importScripts('lib/settings.js', 'lib/translators.js', 'lib/piper-text.js', 'lib/piper-store.js');
 
 const YVD_BG = (function () {
@@ -58,7 +59,7 @@ const YVD_BG = (function () {
           // AUDIO_PLAYBACK alone would close the document after 30 s without audio; WORKERS is genuine (Piper
           // inference runs in a Worker) and keeps long downloads / on-device translation alive.
           reasons: ['AUDIO_PLAYBACK', 'WORKERS'],
-          justification: 'Phát giọng đọc tiếng Việt (Google TTS hoặc Piper offline, chạy trong Worker) và dịch trên máy bằng Translator API khi lồng tiếng video YouTube.'
+          justification: 'Phát giọng đọc tiếng Việt (Google TTS, Piper offline chạy trong Worker hoặc giọng VieNeu cục bộ) và dịch trên máy bằng Translator API khi lồng tiếng video YouTube.'
         })
         .catch(async (e) => {
           if (!(await hasOffscreen())) throw e; // "only one offscreen document" race: fine
@@ -84,7 +85,8 @@ const YVD_BG = (function () {
     const op = msg.op;
     if (op === 'speak' || op === 'prefetch') {
       await ensureOffscreen();
-      const r = await toOffscreen({ op, engine: msg.engine === 'piper' ? 'piper' : 'google', text: msg.text, rate: msg.rate, texts: msg.texts, volume: msg.volume }, true);
+      const engine = msg.engine === 'piper' || msg.engine === 'vieneu' ? msg.engine : 'google';
+      const r = await toOffscreen({ op, engine, text: msg.text, voice: msg.voice, rate: msg.rate, texts: msg.texts, volume: msg.volume }, true);
       return r || { ok: false, error: 'no response' };
     }
     // pause / resume / cancel / setVolume: only if the document already exists
@@ -128,6 +130,258 @@ const YVD_BG = (function () {
     return gtts(msg); // pause / resume / cancel / setVolume are engine-agnostic
   }
 
+  // ---- VieNeu (optional local voice): native-messaging bridge to the program Chrome starts ('com.subdub.vieneu') ----
+  // The program loads the model (~0.6 GB RAM) only while dubbing: it is connected lazily, asked to load the model
+  // ('warm') or given a line, and dropped after VN_IDLE_MS without either. A mere status check (popup / guide page)
+  // never loads the model and its connection is dropped VN_STATUS_MS after it was opened.
+  // storage.local 'vieneuState' mirrors the state so every tab/popup can react.
+  const VN_HOST = 'com.subdub.vieneu';
+  const VN_IDLE_MS = 2 * 60 * 1000;
+  const VN_STATUS_MS = 30 * 1000;
+  const VN_HELLO_MS = 10000; // the program answers hello at once; it never does when it hangs
+  const VN_READY_MS = 30000; // a synth request waits this long for the model to finish loading
+  const VN_SYNTH_MS = 90000;
+  const vn = {
+    port: null,
+    info: { state: '', progress: 0, voices: [], defaultVoice: '', steps: 0, error: '' },
+    nextId: 0,
+    pend: new Map(), // request id -> { parts, got, total, res }
+    hello: null, // { promise, done } of the current connection
+    waiters: [], // { states, res } waiting for a state
+    idle: null,
+    rehello: null, // resolves a pending 'recheck' when the program answers hello
+    busy: false // a synth/warm request came in on this connection (so a status check does not shorten the idle timer)
+  };
+  function vnSet(patch) {
+    const before = vn.info.state;
+    Object.assign(vn.info, patch);
+    if (vn.info.state !== before) local.set({ vieneuState: vn.info.state }).catch(() => {});
+    vn.waiters = vn.waiters.filter((w) => {
+      if (w.states.indexOf(vn.info.state) < 0) return true;
+      w.res(true);
+      return false;
+    });
+  }
+  function vnFailAll(error) {
+    const all = Array.from(vn.pend.values());
+    vn.pend.clear();
+    all.forEach((p) => p.res({ ok: false, error }));
+  }
+  // kind 'work' (synth / warm): keep the program for VN_IDLE_MS from now. kind 'status': only arms the short timer
+  // when none is running (never extended, so a popup left open cannot keep the program alive).
+  function vnTouch(kind) {
+    if (kind !== 'work') {
+      if (vn.idle) return;
+      vn.idle = setTimeout(() => vnDrop('idle'), VN_STATUS_MS);
+      return;
+    }
+    clearTimeout(vn.idle);
+    vn.busy = true;
+    vn.idle = setTimeout(() => vnDrop('idle'), VN_IDLE_MS);
+  }
+  function vnDrop(why) {
+    clearTimeout(vn.idle);
+    vn.idle = null;
+    vn.busy = false;
+    const p = vn.port;
+    vn.port = null;
+    // the model is gone with the program: installed and fine, but not loaded ('idle')
+    if (p && (vn.info.state === 'ready' || vn.info.state === 'loading')) vnSet({ state: 'idle' });
+    if (p) {
+      try {
+        p.disconnect();
+      } catch (e) {}
+    }
+    vnFailAll('vieneu-' + why);
+    if (vn.hello) vn.hello.done();
+  }
+  function vnOnMessage(m) {
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'hello' || m.type === 'status') {
+      vnSet({
+        state: String(m.state || vn.info.state),
+        progress: typeof m.progress === 'number' ? m.progress : vn.info.progress,
+        error: String(m.error || '')
+      });
+      if (m.type === 'hello') {
+        if (Array.isArray(m.voices)) vn.info.voices = m.voices;
+        if (m.defaultVoice) vn.info.defaultVoice = String(m.defaultVoice);
+        if (m.steps) vn.info.steps = m.steps;
+        if (vn.hello) {
+          vn.hello.got = true;
+          vn.hello.done();
+        }
+        if (vn.rehello) vn.rehello();
+      }
+    } else if (m.type === 'audio') {
+      const p = vn.pend.get(m.id);
+      if (!p) return;
+      p.parts[m.part | 0] = String(m.b64 || '');
+      p.got++;
+      if (p.got >= m.parts) {
+        vn.pend.delete(m.id);
+        p.res({ ok: true, b64: p.parts.join(''), sr: m.sr, dur: m.dur });
+      }
+    } else if (m.type === 'error') {
+      const p = vn.pend.get(m.id);
+      if (!p) return;
+      vn.pend.delete(m.id);
+      // (the program also announces these with a status message; this makes the state right before that arrives)
+      if (m.error === 'low-memory' || m.error === 'too-slow') vnSet({ state: m.error });
+      p.res({ ok: false, error: String(m.error || 'vieneu error'), cancelled: m.error === 'cancelled' });
+    }
+  }
+  function vnOnDisconnect(port) {
+    let err = '';
+    try {
+      err = (chrome.runtime.lastError && chrome.runtime.lastError.message) || '';
+    } catch (e) {}
+    if (vn.port !== port) return; // dropped by us
+    vn.port = null;
+    clearTimeout(vn.idle);
+    vn.idle = null;
+    const wasBusy = vn.busy;
+    vn.busy = false;
+    if (/not found/i.test(err)) vnSet({ state: 'not-installed', error: '' });
+    else if (!wasBusy && vn.info.state !== 'error' && vn.info.state !== '') vnSet({ state: 'idle', error: '' }); // it left by itself after a quiet while: by design
+    else vnSet({ state: 'error', error: err || 'Chương trình giọng VieNeu đã dừng' });
+    vnFailAll(vn.info.state === 'not-installed' ? 'not-installed' : 'vieneu-disconnected');
+    if (vn.hello) vn.hello.done();
+  }
+  function vnConnect() {
+    if (vn.port) return;
+    let done;
+    const promise = new Promise((res) => {
+      done = res;
+    });
+    const h = (vn.hello = { promise, done, got: false });
+    const timer = setTimeout(() => {
+      if (vn.hello === h && !h.got && vn.port) vnSet({ state: 'error', error: 'Chương trình giọng VieNeu không phản hồi' });
+      done();
+    }, VN_HELLO_MS);
+    promise.then(() => clearTimeout(timer));
+    let port;
+    try {
+      port = chrome.runtime.connectNative(VN_HOST);
+    } catch (e) {
+      // (older Chrome throws for an unregistered host instead of calling onDisconnect)
+      vnSet({ state: /not found/i.test(String((e && e.message) || e)) ? 'not-installed' : 'error', error: String((e && e.message) || e) });
+      done();
+      return;
+    }
+    vn.port = port;
+    port.onMessage.addListener(vnOnMessage);
+    port.onDisconnect.addListener(() => vnOnDisconnect(port));
+    try {
+      port.postMessage({ type: 'hello' });
+    } catch (e) {}
+  }
+  function vnSend(m) {
+    if (!vn.port) return false;
+    try {
+      vn.port.postMessage(m);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  async function vnEnsure() {
+    if (!vn.port) vnConnect();
+    if (vn.hello) await vn.hello.promise;
+  }
+  function vnStatus() {
+    const i = vn.info;
+    return { ok: true, state: i.state || 'not-installed', progress: i.progress, voices: i.voices, defaultVoice: i.defaultVoice, steps: i.steps, error: i.error };
+  }
+  function vnWaitState(states, ms) {
+    if (states.indexOf(vn.info.state) >= 0) return Promise.resolve(true);
+    return new Promise((res) => {
+      const w = { states, res };
+      vn.waiters.push(w);
+      setTimeout(() => {
+        const i = vn.waiters.indexOf(w);
+        if (i >= 0) vn.waiters.splice(i, 1);
+        res(false);
+      }, ms);
+    });
+  }
+  function vnSynth(msg) {
+    const text = String(msg.text || '').trim();
+    if (!text) return Promise.resolve({ ok: false, error: 'empty text' });
+    return vnEnsure().then(async () => {
+      if (!vn.port) return { ok: false, error: vn.info.state === 'not-installed' ? 'not-installed' : vn.info.error || 'vieneu-disconnected' };
+      vnTouch('work');
+      // 'idle': the program loads the model for the first line. A model that is loading is worth waiting for;
+      // missing / downloading / low-memory / too-slow / error are not
+      if (vn.info.state === 'loading') await vnWaitState(['ready', 'idle', 'error', 'missing', 'low-memory', 'too-slow'], VN_READY_MS);
+      if (vn.info.state !== 'ready' && vn.info.state !== 'idle') return { ok: false, error: 'vieneu-' + (vn.info.state || 'unavailable') };
+      return new Promise((res) => {
+        const id = 'r' + ++vn.nextId;
+        const timer = setTimeout(() => {
+          if (vn.pend.delete(id)) {
+            vnSend({ type: 'cancel', ids: [id] });
+            res({ ok: false, error: 'timeout' });
+          }
+        }, VN_SYNTH_MS);
+        vn.pend.set(id, { parts: [], got: 0, res: (r) => (clearTimeout(timer), res(r)) });
+        if (!vnSend({ type: 'speak', id, text, voice: String(msg.voice || ''), prio: msg.prio ? 1 : 0 })) {
+          vn.pend.delete(id);
+          clearTimeout(timer);
+          res({ ok: false, error: 'vieneu-disconnected' });
+        }
+      });
+    });
+  }
+  async function vieneu(msg) {
+    const op = msg.op;
+    if (op === 'synth') return vnSynth(msg);
+    if (op === 'cancel') {
+      if (vn.port) vnSend({ type: 'cancel' }); // the program drops its queued prefetches
+      return { ok: true };
+    }
+    if (op === 'recheck') {
+      // (low-memory / too-slow are re-evaluated by a fresh program)
+      if (vn.port && vn.info.state !== 'error' && vn.info.state !== 'low-memory' && vn.info.state !== 'too-slow') {
+        // alive: just refresh what we know (no model reload); the program answers at once
+        await new Promise((res) => {
+          const t = setTimeout(res, 2000);
+          vn.rehello = () => (clearTimeout(t), res());
+          if (!vnSend({ type: 'hello' })) res();
+        });
+        vn.rehello = null;
+      } else {
+        vnDrop('recheck'); // dead end ("not-installed", crashed, error): connect from scratch
+        vn.info.state = '';
+        await vnEnsure();
+      }
+      vnTouch('status');
+      return vnStatus();
+    }
+    if (op === 'warm') {
+      // dubbing has started: load the model now so the first line is not delayed (never from a mere status check)
+      const dead = !vn.port && (vn.info.state === 'not-installed' || vn.info.state === 'error');
+      if (!dead) {
+        await vnEnsure();
+        if (vn.port && (vn.info.state === 'idle' || vn.info.state === 'ready' || vn.info.state === 'loading')) {
+          vnSend({ type: 'warm' });
+          vnTouch('work');
+        }
+      }
+      return vnStatus();
+    }
+    if (op === 'status' || op === 'download') {
+      // a known dead end (not installed / crashed) is only retried by 'recheck', so polling does not respawn the program
+      const dead = !vn.port && (vn.info.state === 'not-installed' || vn.info.state === 'error');
+      if (!dead) {
+        await vnEnsure();
+        if (vn.port) vnTouch(op === 'download' ? 'work' : 'status');
+      }
+      if (op === 'download' && vn.port) vnSend({ type: 'download' });
+      return vnStatus();
+    }
+    return { ok: false, error: 'unknown op' };
+  }
+
   // ---- on-device translation: runs in the offscreen document (Translator API) ----
   async function localTr(msg) {
     await ensureOffscreen();
@@ -142,6 +396,12 @@ const YVD_BG = (function () {
       case 'gtts':
         try {
           return await gtts(msg);
+        } catch (e) {
+          return { ok: false, error: String((e && e.message) || e) };
+        }
+      case 'vieneu':
+        try {
+          return await vieneu(msg);
         } catch (e) {
           return { ok: false, error: String((e && e.message) || e) };
         }

@@ -1,9 +1,11 @@
 /* Offscreen document (extension origin, immune to YouTube's page CSP). It hosts:
  *   - Google Translate TTS fetch + playback         (engine 'google')
  *   - Piper TTS (offline, in lib/piper-worker.js)    (engine 'piper')
+ *   - VieNeu (optional local program, whole line per request; reached through the service worker, which owns the
+ *     native-messaging port)                          (engine 'vieneu', + voice)
  *   - Chrome's on-device Translator API              (trProbe / trTranslate)
  * Messages (from background, {target:'offscreen'}):
- *   speak | prefetch | pause | resume | cancel | setVolume   (+ engine:'google'|'piper')
+ *   speak | prefetch | pause | resume | cancel | setVolume   (+ engine:'google'|'piper'|'vieneu')
  *   piperStatus | piperDownload | piperAbort | piperWarm | trProbe | trTranslate  (trProbe/trTranslate: sourceLang, targetLang, texts) */
 (function () {
   'use strict';
@@ -233,6 +235,45 @@
     return { ok: true, started: true };
   }
 
+  // ---- VieNeu (local program): the service worker holds the native port; we send it one request per line ----
+  // The program replies with the whole line as base64 of a WAV, which plays through the same playChunk as the others.
+  const VN_DEFAULT_VOICE = 'Trúc Ly';
+  const vnPrefetching = new Set(); // cache keys whose request is still in flight as a (low priority) prefetch
+  let vnUsed = false;
+  function vnRequest(text, voice, prio) {
+    vnUsed = true;
+    return new Promise((res, rej) => {
+      try {
+        chrome.runtime.sendMessage({ type: 'vieneu', op: 'synth', text, voice, prio }, (r) => {
+          const err = chrome.runtime.lastError;
+          if (err) return rej(new Error(err.message || 'vieneu bridge error'));
+          if (!r || !r.ok) return rej(new Error((r && r.error) || 'vieneu error'));
+          res(r);
+        });
+      } catch (e) {
+        rej(e);
+      }
+    });
+  }
+  function b64Bytes(b64) {
+    const bin = atob(b64);
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+  function vieneuBlob(text, voice, prio) {
+    const key = 'vieneu|' + voice + '|' + text;
+    const queued = cache.has(key);
+    const p = lru(key, () => {
+      if (prio) vnPrefetching.add(key);
+      const q = vnRequest(text, voice, prio).then((r) => new Blob([b64Bytes(r.b64)], { type: 'audio/wav' }));
+      q.then(() => vnPrefetching.delete(key), () => vnPrefetching.delete(key));
+      return q;
+    });
+    if (queued && !prio && vnPrefetching.delete(key)) vnRequest(text, voice, 0).catch(() => {}); // spoken now: the program upgrades the queued job
+    return p;
+  }
+
   // ---- on-device translation (Translator API) ----
   const engine = YVD.localTranslate.createEngine(() => (typeof self.Translator !== 'undefined' ? self.Translator : undefined));
 
@@ -303,6 +344,8 @@
     const rate = Math.min(4, Math.max(0.5, Number(msg.rate) || 1));
     if (msg.volume != null) volume = clampVol(msg.volume);
     const isPiper = msg.engine === 'piper';
+    const isVieneu = msg.engine === 'vieneu';
+    const vnVoice = String(msg.voice || VN_DEFAULT_VOICE);
     return new Promise(async (resolve) => {
       const c = {
         token: token,
@@ -323,9 +366,9 @@
         return c.finish({ ok: false, error: 'piper-not-ready' });
       }
       if (c.cancelled) return;
-      const chunks = isPiper ? P.toChunks(msg.text) : googleChunks(msg.text);
+      const chunks = isVieneu ? [String(msg.text || '').trim()].filter(Boolean) : isPiper ? P.toChunks(msg.text) : googleChunks(msg.text); // (the VieNeu program chunks long lines itself)
       if (!chunks.length) return c.finish({ ok: true, playSec: 0, chars: 0 });
-      const blobs = chunks.map((t) => (isPiper ? piperBlob(t, 0) : googleBlob(t, 0))); // request all chunks, play in order
+      const blobs = chunks.map((t) => (isVieneu ? vieneuBlob(t, vnVoice, 0) : isPiper ? piperBlob(t, 0) : googleBlob(t, 0))); // request all chunks, play in order
       blobs.forEach((b) => b.catch(() => {}));
       try {
         let playSec = 0;
@@ -348,15 +391,18 @@
         if (c.cancelled) return;
         if (cur === c) cur = null;
         if (c.url) URL.revokeObjectURL(c.url);
-        c.finish({ ok: false, error: String((e && e.message) || e), retryAt: isPiper ? 0 : googleRetryAt() });
+        c.finish({ ok: false, error: String((e && e.message) || e), retryAt: isPiper || isVieneu ? 0 : googleRetryAt() });
       }
     });
   }
 
   function prefetch(msg) {
     const isPiper = msg.engine === 'piper';
+    const vnVoice = String(msg.voice || VN_DEFAULT_VOICE);
     (msg.texts || []).forEach((t) => {
-      if (isPiper) P.toChunks(t).forEach((ch) => piperBlob(ch, 1).catch(() => {}));
+      if (msg.engine === 'vieneu') {
+        if (String(t || '').trim()) vieneuBlob(String(t).trim(), vnVoice, 1).catch(() => {});
+      } else if (isPiper) P.toChunks(t).forEach((ch) => piperBlob(ch, 1).catch(() => {}));
       else if (Date.now() >= gDownUntil) googleChunks(t).forEach((ch) => googleBlob(ch, 1).catch(() => {}));
     });
   }
@@ -396,6 +442,12 @@
       case 'cancel':
         stopCurrent('cancel');
         if (pw) pcall('clear').catch(() => {}); // drop queued (not yet started) Piper jobs
+        if (vnUsed) {
+          vnPrefetching.clear(); // the program drops its queued prefetches (their cache entries fail and are never kept)
+          try {
+            chrome.runtime.sendMessage({ type: 'vieneu', op: 'cancel' }, () => void chrome.runtime.lastError);
+          } catch (e) {}
+        }
         sendResponse({ ok: true });
         return false;
       case 'piperStatus':

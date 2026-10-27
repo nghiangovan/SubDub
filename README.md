@@ -50,6 +50,8 @@ Bấm biểu tượng **SubDub** trên thanh công cụ để mở bảng cài �
 - **Tải giọng offline (63MB, 1 lần)**: giọng đọc dự phòng, dùng khi Google tạm chặn giọng đọc.
 - *(Tuỳ chọn, nên làm trên Windows)* Cài **giọng tiếng Việt của Windows**: vào *Settings → Time & language → Speech → Add voices*, chọn **Vietnamese (Tiếng Việt)**, rồi gõ `chrome://restart`. Khi Google chặn, tiện ích chuyển ngay sang giọng này, nghe hay hơn giọng offline.
 
+- *(Tuỳ chọn, không bắt buộc)* Muốn giọng đọc **mượt hơn và không bị Google chặn**, có thể cài thêm giọng **VieNeu** trên Windows. Xem mục [Giọng VieNeu](#giọng-vieneu-tuỳ-chọn-mượt-hơn). Bỏ qua cũng không sao, SubDub vẫn đọc bình thường.
+
 ![Hai nút tải offline trong bảng cài đặt](docs/images/4-popup.png)
 
 ### Bước 7: Dùng thử
@@ -81,7 +83,7 @@ Cài đặt của bạn được giữ nguyên.
 - Lớp phụ đề tuỳ chỉnh trên trình phát (tuỳ chọn hiện dòng gốc bên dưới), hoạt động ở chế độ toàn màn hình.
 - **Dịch trên máy** bằng Translator API có sẵn của Chrome (Chrome 138+ trên máy tính): offline, không giới hạn. Mặc định là *Tự động*: dịch bằng Google Dịch, và dùng dịch trên máy làm dự phòng (nếu đã tải). Nếu một nguồn bị chặn hoặc lỗi giữa chừng, phần còn lại tự chuyển sang nguồn kia.
 - Các nguồn dịch khác: Google Dịch (miễn phí, không chính thức), YouTube (`tlang=vi`), Claude API (tuỳ chọn, cần khoá).
-- Lồng tiếng: giọng hệ thống `speechSynthesis` (`vi-*`) nếu có, **Google Translate TTS** (mặc định khi máy không có giọng Việt) và **giọng offline Piper** (`vi_VN-vais1000-medium`) làm dự phòng tự động; tự giảm âm lượng video gốc khi đọc.
+- Lồng tiếng: giọng hệ thống `speechSynthesis` (`vi-*`) nếu có, **Google Translate TTS** (mặc định khi máy không có giọng Việt) và **giọng offline Piper** (`vi_VN-vais1000-medium`) làm dự phòng tự động, và giọng **VieNeu** chạy trên máy (tuỳ chọn, chỉ Windows); tự giảm âm lượng video gốc khi đọc.
 - Hỗ trợ điều hướng SPA, tua video, tạm dừng, đổi tốc độ phát, quảng cáo.
 - **Google Meet**: đọc phụ đề CC tiếng Anh của cuộc họp, dịch từng câu hoàn chỉnh sang tiếng Việt, hiện trong bảng nổi và (tuỳ chọn) lồng tiếng cho riêng bạn.
 
@@ -164,7 +166,7 @@ Thư mục `vendor/` chứa mã chạy offline (onnxruntime-web, piper-phonemize
 
 ## Cài đặt trong popup
 
-Bật/tắt chung, **công tắc theo trang (YouTube / Google Meet)**, mục **Google Meet** (hiện câu gốc, không đọc lời của tôi, đặt lại vị trí bảng, nhắc đeo tai nghe), chế độ (chỉ phụ đề / chỉ lồng tiếng / cả hai), hiện dòng gốc (YouTube), nguồn dịch (Tự động / Dịch trên máy / Google / YouTube / Claude, + khoá API và mô hình Claude, tuỳ chọn "Dịch ngắn gọn"; trạng thái bộ dịch offline và nút "Tải bộ dịch offline (1 lần)"), **Giọng đọc** (Tự động (Google, dự phòng offline) / Google Translate / Offline (Piper) / Giọng hệ thống; trạng thái và nút "Tải giọng offline (63MB, 1 lần)") và giọng hệ thống, tốc độ đọc, tốc độ đọc tối đa, ngưỡng tốc độ video để tắt lồng tiếng, **âm lượng giọng lồng tiếng** (`dubVolume`, 0–100%, mặc định 100%), **âm lượng video gốc khi lồng tiếng** (`duckLevel`), cỡ chữ, **độ đậm nền phụ đề** (`subBgOpacity`, 0–100%, mặc định 75%), nút **Đặt lại vị trí phụ đề YouTube**, nút **Xoá cache**.
+Bật/tắt chung, **công tắc theo trang (YouTube / Google Meet)**, mục **Google Meet** (hiện câu gốc, không đọc lời của tôi, đặt lại vị trí bảng, nhắc đeo tai nghe), chế độ (chỉ phụ đề / chỉ lồng tiếng / cả hai), hiện dòng gốc (YouTube), nguồn dịch (Tự động / Dịch trên máy / Google / YouTube / Claude, + khoá API và mô hình Claude, tuỳ chọn "Dịch ngắn gọn"; trạng thái bộ dịch offline và nút "Tải bộ dịch offline (1 lần)"), **Giọng đọc** (Tự động (Google, dự phòng offline) / Google Translate / Offline (Piper) / Giọng hệ thống / VieNeu; trạng thái và nút "Tải giọng offline (63MB, 1 lần)"; với VieNeu: ô chọn giọng, trạng thái và nút "Kiểm tra lại"; thẻ giới thiệu VieNeu có thể ẩn) và giọng hệ thống, tốc độ đọc, tốc độ đọc tối đa, ngưỡng tốc độ video để tắt lồng tiếng, **âm lượng giọng lồng tiếng** (`dubVolume`, 0–100%, mặc định 100%), **âm lượng video gốc khi lồng tiếng** (`duckLevel`), cỡ chữ, **độ đậm nền phụ đề** (`subBgOpacity`, 0–100%, mặc định 75%), nút **Đặt lại vị trí phụ đề YouTube**, nút **Xoá cache**.
 
 Trên YouTube có thể **kéo phụ đề** tới chỗ khác trong khung video. Vị trí được lưu theo tỉ lệ khung, nên vẫn giữ đúng khi vào toàn màn hình. **Nhấp đúp** vào phụ đề để đưa về chỗ cũ. Bấm vào phụ đề không làm dừng video. Khoá API Claude chỉ lưu trong `chrome.storage.local` và không bao giờ được ghi log.
 
@@ -195,12 +197,13 @@ Trên YouTube có thể **kéo phụ đề** tới chỗ khác trong khung video
 
 ## Giọng đọc (TTS)
 
-Cài đặt **Giọng đọc** (`ttsEngine`) có 4 lựa chọn:
+Cài đặt **Giọng đọc** (`ttsEngine`) có 5 lựa chọn:
 
 - **Tự động (Google, dự phòng offline)** (mặc định): đọc bằng Google Translate. Riêng giọng Microsoft *Natural* (HoaiMy/NamMinh, có trên Edge) được ưu tiên hơn Google. Khi Google lỗi, tiện ích dùng giọng tiếng Việt có sẵn của máy (ví dụ Microsoft An); không có thì dùng Piper (nếu đã tải); rồi thử lại Google sau thời gian chờ. Thanh trạng thái hiện "SubDub: dùng giọng Google Translate (tiếng Việt)".
 - **Google Translate**: luôn ưu tiên Google (vẫn chuyển sang Piper khi Google lỗi và Piper đã tải).
 - **Offline (Piper)**: luôn dùng Piper, không cần mạng sau khi đã tải giọng (chưa tải thì tự tải một lần, Google đọc tạm).
 - **Giọng hệ thống**: chỉ dùng `speechSynthesis` (chọn giọng ở ô bên dưới). Nếu máy không có giọng `vi-*` thì dùng Piper nếu đã tải, nếu không thì `chrome.tts` (có thể không phát ra tiếng).
+- **VieNeu – giọng mượt (cần cài thêm)**: giọng chạy trên máy, tuỳ chọn, chỉ Windows. Xem mục [Giọng VieNeu](#giọng-vieneu-tuỳ-chọn-mượt-hơn). Chế độ *Tự động* **không bao giờ** tự chọn VieNeu.
 
 Về giọng Google Translate:
 
@@ -215,7 +218,40 @@ Về giọng offline Piper:
 - Văn bản được chuẩn hoá nhẹ trước khi đọc (bỏ URL, `[Âm nhạc]`, ký hiệu nhạc, emoji; `50%` → "50 phần trăm", `$20` → "20 đô la", `1,000` → `1000`, `&` → "và"...), cắt thành khối ≤ 180 ký tự, tổng hợp ra WAV (đọc chậm lại `length_scale` × 1,6 vì giọng gốc nhanh hơn Google khoảng 38%; nhờ vậy ở tốc độ 1x nhịp đọc gần bằng Google), cắt khoảng lặng đầu/cuối rồi phát bằng cùng bộ phát (`playbackRate`, `preservesPitch`, âm lượng, tạm dừng/tiếp tục/huỷ, tải trước 2 câu kế tiếp, cache LRU theo engine + giọng + văn bản).
 - Tốc độ tổng hợp phụ thuộc CPU (1 luồng WASM): thường khoảng 0.25 giây tổng hợp cho mỗi giây âm thanh sau khi đã nạp mô hình (lần đầu nạp khoảng 2.5 giây). Khi lồng tiếng bắt đầu, nếu có thể dùng Piper tiện ích nạp mô hình sẵn để việc chuyển từ Google sang Piper gần như tức thì.
 
+Về giọng VieNeu: câu nào VieNeu chưa đọc được (chưa cài, đang tải, lỗi, máy thiếu RAM hoặc quá yếu) sẽ được chuyển ngay sang Google, rồi mới đến chuỗi dự phòng như trên (giọng hệ thống, Piper, `chrome.tts`). Sau một lần lỗi, VieNeu nghỉ 60 giây trước khi thử lại.
+
 **Giọng dự phòng có sẵn của Windows (nên cài):** vào *Settings → Time & language → Speech → Add voices*, chọn **Tiếng Việt (Vietnamese)**, rồi khởi động lại Chrome (gõ `chrome://restart`). Máy sẽ có giọng **Microsoft An**: miễn phí, chạy offline, không giới hạn. Ở chế độ *Tự động*, tiện ích vẫn đọc bằng Google Translate cho hay, và **chuyển ngay sang giọng An** khi Google tạm chặn (không cần tải gì). Muốn luôn đọc bằng giọng An thì chọn *Giọng đọc* = **Giọng hệ thống**.
+
+## Giọng VieNeu (tuỳ chọn, mượt hơn)
+
+**VieNeu** là giọng đọc tiếng Việt nghe mượt và tự nhiên, chạy ngay trên máy bạn: miễn phí, không cần tài khoản, không bị Google chặn. **Không bắt buộc**: không cài thì SubDub vẫn hoạt động như cũ (Google Translate, dự phòng giọng hệ thống / Piper). Hợp với người hay gặp thông báo "Google tạm chặn" hoặc muốn giọng đọc hay hơn.
+
+**Cần có:** Windows 10/11 và Chrome (Mac, Linux chưa hỗ trợ); khoảng **550 MB** ổ đĩa; khoảng **0,6 GB RAM** khi đang lồng tiếng; có mạng lúc cài (một lần).
+
+**Cách cài** (không cần gõ lệnh, không cần quyền quản trị):
+
+1. Mở thư mục SubDub đã giải nén lúc cài tiện ích (thư mục có file `Cai-giong-VieNeu.bat`). Quên chỗ để? Vào `chrome://extensions`, bấm **Chi tiết** ở thẻ SubDub, dòng **Nguồn (Source)** cho biết đường dẫn.
+2. **Nhấp đúp** `Cai-giong-VieNeu.bat`. Nếu Windows hỏi, bấm **Chạy (Run)**. Nếu hiện hộp xanh **"Windows đã bảo vệ PC của bạn"** (*Windows protected your PC*): bấm **Thông tin thêm (More info)** rồi **Vẫn chạy (Run anyway)**.
+3. **Chờ** cửa sổ báo cài xong (vài phút, tải khoảng 550 MB). Đừng đóng cửa sổ giữa chừng.
+4. Quay lại Chrome, mở popup SubDub, ở mục **Giọng đọc** chọn **VieNeu – giọng mượt**. Đợi dòng trạng thái báo **"sẵn sàng ✓"** (bấm **Kiểm tra lại** nếu cần). Chọn giọng (nữ/nam, Bắc/Nam…) ở ô **Giọng VieNeu**.
+
+Trong popup có thẻ nhỏ "Muốn giọng đọc mượt hơn, không bị Google chặn?" với nút **Xem hướng dẫn** (mở trang hướng dẫn từng bước `popup/vieneu.html`, có khung trạng thái trực tiếp). Bấm × để ẩn thẻ. Khi Google bị chặn, thanh trạng thái trên video cũng nhắc một lần "cài giọng VieNeu để không bị chặn".
+
+**Gỡ cài đặt:** nhấp đúp `Go-giong-VieNeu.bat`; file này xoá giọng đã tải (khoảng 550 MB) và gỡ đăng ký với Chrome. Sau đó chọn **Giọng đọc = Tự động**.
+
+**Gặp trục trặc**
+
+- Cài xong vẫn báo "chưa cài": bấm **Kiểm tra lại**; nếu vẫn vậy, đóng hẳn Chrome rồi mở lại.
+- Windows hoặc phần mềm diệt virus chặn file: làm theo **Thông tin thêm → Vẫn chạy**, hoặc cho phép `Cai-giong-VieNeu.bat` trong phần mềm diệt virus.
+- Mất mạng giữa chừng khi cài: chạy lại `Cai-giong-VieNeu.bat`.
+- Giọng chậm hoặc ngắt quãng: máy yếu; hạ **Tốc độ đọc** hoặc chọn lại **Tự động**.
+
+**Cách hoạt động (cho người quan tâm)**
+
+- Giọng chạy trong một chương trình nhỏ trên máy, **do Chrome tự khởi động** qua Native Messaging (tên `com.subdub.vieneu`, quyền `nativeMessaging`, chỉ cho phép đúng ID của tiện ích này). Cài đặt vào `%LOCALAPPDATA%\SubDub\vieneu\`, đăng ký trong `HKCU\Software\Google\Chrome\NativeMessagingHosts`, nên thư mục SubDub di chuyển cũng không sao. Mô hình và mã được tải lúc cài, **không** nằm sẵn trong tiện ích (xem `vendor/NOTICE.md`).
+- Luồng: trang → `content/dubber.js` → `background.js` (service worker, giữ cổng native vì tài liệu offscreen không gọi được `connectNative`) → chương trình VieNeu; âm thanh (WAV) quay về tài liệu offscreen và phát bằng cùng bộ phát với Google/Piper (tốc độ, âm lượng, tạm dừng, huỷ). Mỗi câu là một yêu cầu; câu kế tiếp được tải trước.
+- **Không làm máy chậm:** chương trình chạy ở mức ưu tiên thấp, **chỉ nạp mô hình khi đang lồng tiếng** (mở popup hay trang hướng dẫn chỉ kiểm tra, không nạp). Không có câu nào cần đọc trong khoảng 2 phút thì cổng bị ngắt và chương trình tự thoát, trả lại bộ nhớ. Nếu RAM trống dưới 1 GB hoặc máy quá chậm, trạng thái là "thiếu RAM"/"hơi yếu" và SubDub tự dùng Google.
+- Trạng thái (`chưa cài` / `đang tải` / `đang khởi động` / `sẵn sàng` / `lỗi`) được lưu ở `chrome.storage.local.vieneuState` để mọi tab và popup cùng biết.
 
 ## Giọng đọc tự nhiên trên Microsoft Edge (miễn phí)
 

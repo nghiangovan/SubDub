@@ -15,6 +15,13 @@
     </label>
   </header>
 
+  <div class="promo" id="vieneuPromo" hidden>
+    <button type="button" class="x" id="vieneuPromoClose" aria-label="Đóng" title="Đóng">×</button>
+    <div class="promo-title">Giọng đọc mượt hơn</div>
+    <div>Muốn giọng đọc mượt hơn, không bị Google chặn? Cài giọng VieNeu (miễn phí, ~550 MB).</div>
+    <button type="button" class="primary" id="vieneuPromoGuide">Xem hướng dẫn</button>
+  </div>
+
   <section>
     <div class="label">Chế độ</div>
     <div class="radios">
@@ -71,10 +78,21 @@
       <option value="google">Google Translate</option>
       <option value="piper">Offline (Piper)</option>
       <option value="system">Giọng hệ thống</option>
+      <option value="vieneu">VieNeu – giọng mượt (cần cài thêm)</option>
     </select>
     <div id="voiceBox">
       <label class="label" for="ttsVoice">Giọng hệ thống</label>
       <select id="ttsVoice"></select>
+    </div>
+    <div id="vieneuBox" hidden>
+      <label class="label" for="vieneuVoice">Giọng VieNeu</label>
+      <select id="vieneuVoice"></select>
+      <div class="hint" id="vieneuStatus"></div>
+      <progress id="vieneuProgress" max="100" value="0" hidden></progress>
+      <div class="dl row">
+        <button id="vieneuDownload" type="button" hidden>Tải mô hình</button>
+        <button id="vieneuRecheck" type="button">Kiểm tra lại</button>
+      </div>
     </div>
     <div class="hint" id="voiceHint"></div>
     <div class="hint" id="piperStatus"></div>
@@ -114,6 +132,7 @@
   </footer>
 
   <script src="../lib/settings.js"></script>
+  <script src="../lib/vieneu.js"></script>
   <script src="../lib/providers.js"></script>
   <script src="../lib/local-translate.js"></script>
   <script src="popup.js"></script>

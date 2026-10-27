@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cài giọng VieNeu – SubDub</title>
+  <link rel="stylesheet" href="vieneu.css">
+</head>
+<body>
+  <main>
+    <h1>Cài giọng VieNeu <span class="tag">tuỳ chọn</span></h1>
+    <p class="lead">VieNeu là một giọng đọc tiếng Việt nghe <b>mượt và tự nhiên</b>, chạy ngay trên máy của bạn. Miễn phí, không cần tài khoản, và <b>không bị Google chặn</b>.</p>
+    <p>Bạn <b>không bắt buộc</b> phải cài. Nếu không cài, SubDub vẫn đọc bình thường bằng Google Translate. Hãy cài nếu bạn hay gặp thông báo &quot;Google tạm chặn&quot; hoặc muốn giọng đọc hay hơn.</p>
+
+    <div class="box need">
+      <b>Cần có</b>
+      <ul>
+        <li>Máy tính <b>Windows</b> (10 hoặc 11) và trình duyệt Chrome. Mac và Linux chưa hỗ trợ.</li>
+        <li>Khoảng <b>550 MB</b> trống trên ổ đĩa, và khoảng <b>0,6 GB RAM</b> khi đang lồng tiếng.</li>
+        <li>Có mạng trong lúc cài (chỉ một lần). Cài xong, giọng này đọc không cần mạng.</li>
+      </ul>
+    </div>
+
+    <div class="box status" id="statusBox" aria-live="polite">
+      <div class="status-title">Tình trạng hiện tại</div>
+      <div class="status-line" id="vnStatus">VieNeu: đang kiểm tra…</div>
+      <progress id="vnProgress" max="100" value="0" hidden></progress>
+      <div class="row">
+        <button type="button" id="vnRecheck">Kiểm tra lại</button>
+        <button type="button" id="vnDownload" hidden>Tải mô hình</button>
+        <button type="button" class="primary" id="vnUse" hidden>Dùng giọng VieNeu ngay</button>
+      </div>
+      <div class="note" id="vnUseNote" hidden>Đã chọn. Mở một video YouTube có phụ đề để nghe thử.</div>
+    </div>
+
+    <h2>Các bước cài (khoảng 5 phút)</h2>
+    <ol class="steps">
+      <li>
+        <h3>Mở thư mục SubDub</h3>
+        <p>Đó là thư mục bạn đã giải nén khi cài tiện ích. Trong đó có file <code>Cai-giong-VieNeu.bat</code> nằm cạnh các file <code>manifest.json</code> và <code>background.js</code>.</p>
+        <p class="tip">Quên thư mục để ở đâu? Gõ <code>chrome://extensions</code> vào thanh địa chỉ, bấm <b>Chi tiết</b> ở thẻ SubDub. Dòng <b>Nguồn (Source)</b> cho biết đường dẫn thư mục.</p>
+      </li>
+      <li>
+        <h3>Nhấp đúp vào file <code>Cai-giong-VieNeu.bat</code></h3>
+        <p>Nếu Windows hỏi có cho chạy không, hãy bấm <b>Chạy (Run)</b>.</p>
+        <p class="tip">Nếu hiện hộp màu xanh <b>&quot;Windows đã bảo vệ PC của bạn&quot;</b> (<i>Windows protected your PC</i>): bấm <b>Thông tin thêm (More info)</b>, rồi bấm <b>Vẫn chạy (Run anyway)</b>. File này chỉ cài giọng đọc vào thư mục riêng của bạn và không cần quyền quản trị.</p>
+      </li>
+      <li>
+        <h3>Chờ cửa sổ báo cài xong</h3>
+        <p>Một cửa sổ đen sẽ hiện ra và chạy vài phút để tải khoảng 550 MB. Đây là bình thường. <b>Đừng đóng cửa sổ</b> cho tới khi nó báo đã cài xong.</p>
+      </li>
+      <li>
+        <h3>Quay lại Chrome và chọn giọng VieNeu</h3>
+        <p>Bấm biểu tượng <b>SubDub</b> trên thanh công cụ, ở mục <b>Giọng đọc</b> chọn <b>VieNeu – giọng mượt</b>. Đợi dòng trạng thái báo <b>&quot;sẵn sàng ✓&quot;</b>. Nếu chưa thấy, bấm nút <b>Kiểm tra lại</b>.</p>
+        <p class="tip">Lúc nào trang này báo &quot;sẵn sàng ✓&quot; ở khung phía trên là xong. Bấm <b>Dùng giọng VieNeu ngay</b> để chọn luôn.</p>
+      </li>
+    </ol>
+
+    <h2>Khi dùng</h2>
+    <ul>
+      <li>Trong popup có thể đổi sang giọng khác (nữ, nam, giọng miền Bắc, miền Nam…).</li>
+      <li>Nếu VieNeu chưa sẵn sàng hoặc một câu bị lỗi, SubDub <b>tự đọc câu đó bằng Google</b> rồi mới đến giọng dự phòng khác, không bị im lặng.</li>
+      <li>Giọng chỉ chạy <b>khi đang lồng tiếng</b>, ở mức ưu tiên thấp nên không làm máy bị đơ. Ngưng đọc khoảng 2 phút là chương trình tự tắt và trả lại bộ nhớ cho máy.</li>
+      <li>Nếu máy đang thiếu RAM hoặc hơi yếu, SubDub tự dùng Google thay vì làm máy chậm đi.</li>
+      <li>Google Meet dùng chung giọng này.</li>
+    </ul>
+
+    <h2>Gặp trục trặc?</h2>
+    <ul class="faq">
+      <li><b>Cài xong mà vẫn báo &quot;chưa cài&quot;:</b> bấm <b>Kiểm tra lại</b>. Nếu vẫn vậy, đóng hẳn Chrome (tất cả cửa sổ) rồi mở lại.</li>
+      <li><b>Windows hoặc phần mềm diệt virus chặn file:</b> làm theo chỉ dẫn <b>Thông tin thêm → Vẫn chạy</b> ở bước 2. Nếu phần mềm diệt virus chặn, hãy cho phép <code>Cai-giong-VieNeu.bat</code> chạy.</li>
+      <li><b>Cửa sổ báo lỗi tải về hoặc mất mạng giữa chừng:</b> kiểm tra mạng rồi nhấp đúp <code>Cai-giong-VieNeu.bat</code> lần nữa, phần đã tải sẽ không phải tải lại từ đầu.</li>
+      <li><b>Báo &quot;lỗi&quot; ở khung tình trạng:</b> chạy lại file cài đặt ở bước 2, rồi bấm <b>Kiểm tra lại</b>.</li>
+      <li><b>Giọng đọc chậm hoặc bị ngắt:</b> máy yếu có thể không kịp đọc. Hạ <b>Tốc độ đọc</b> trong popup, hoặc chọn lại <b>Tự động</b>.</li>
+      <li><b>Đã di chuyển hay xoá thư mục SubDub:</b> giọng VieNeu nằm ở thư mục riêng của Windows nên không bị mất, nhưng tiện ích SubDub thì vẫn cần thư mục của nó.</li>
+    </ul>
+
+    <h2>Gỡ giọng VieNeu</h2>
+    <p>Nhấp đúp file <code>Go-giong-VieNeu.bat</code> trong thư mục SubDub và chờ cửa sổ báo xong. File này xoá toàn bộ giọng VieNeu đã tải về (giải phóng khoảng 550 MB) và gỡ đăng ký với Chrome. Sau đó nên chọn <b>Giọng đọc = Tự động</b> trong popup.</p>
+
+    <footer>
+      <p>Giọng VieNeu dùng mã VieNeu-TTS, mô hình VieNeu-TTS-v3-Nano và bộ chuyển chữ sea-g2p, cùng giấy phép Apache-2.0. Chúng được tải về lúc cài, không nằm sẵn trong SubDub. Xem <code>vendor/NOTICE.md</code>.</p>
+    </footer>
+  </main>
+
+  <script src="../lib/settings.js"></script>
+  <script src="../lib/vieneu.js"></script>
+  <script src="vieneu.js"></script>
+</body>
+</html>

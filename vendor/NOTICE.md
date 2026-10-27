@@ -18,3 +18,14 @@ Notes
   and offer the corresponding source (https://github.com/espeak-ng/espeak-ng, rhasspy fork https://github.com/rhasspy/espeak-ng).
 - Voice `vi_VN-vais1000-medium` (rhasspy/piper-voices): dataset VAIS-1000, license CC BY 4.0
   (https://creativecommons.org/licenses/by/4.0/); attribution: "VAIS-1000 Vietnamese speech synthesis corpus".
+
+## Optional local voice VieNeu (not bundled)
+
+The optional local Vietnamese voice (`vieneu/`, installed by `Cai-giong-VieNeu.bat`) is **downloaded at install time and is not part of this repository's vendored runtime**. It uses:
+
+| Component | Source | License |
+| --- | --- | --- |
+| VieNeu-TTS (code ported for the local program; no dependency on the `vieneu` package) | github.com/pnnbao97/VieNeu-TTS | Apache-2.0 |
+| VieNeu-TTS-v3-Nano model (ONNX) and voice presets | huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Nano | Apache-2.0 |
+| sea-g2p (Vietnamese text normalisation and grapheme-to-phoneme) | PyPI `sea-g2p` | Apache-2.0 |
+

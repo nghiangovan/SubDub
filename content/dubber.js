@@ -101,17 +101,19 @@
   // Any Google failure falls back to Piper at once (when downloaded) and stays on it for the cooldown.
   // natural: the system voice is a Microsoft "Natural" one (Edge), better than Google. A plain installed voice
   // (Windows "Microsoft An") sounds worse than Google, so in auto it is the instant offline fallback instead.
-  // vieneuReady: the local program is ready and not in its failure cooldown. Only the explicit 'vieneu' setting
-  // uses it ('auto' never does); when it is not ready the line goes to Google, then the usual fallback.
+  // vieneuReady: the local program is installed, usable and not in its failure cooldown. The explicit 'vieneu' setting
+  // speaks with it first (not ready: Google, then the usual fallback). 'auto' / 'google' never start with it, but
+  // when Google is blocked it is the first backup, ahead of the system voice / Piper.
   function resolveEngine(setting, hasVi, googleDown, piperReady, natural, vieneuReady) {
     const offline = piperReady ? 'piper' : 'chrome';
     const fallback = hasVi ? 'system' : offline;
+    const backup = vieneuReady ? 'vieneu' : fallback; // Google blocked
     if (setting === 'vieneu' && vieneuReady) return 'vieneu';
     if (setting === 'system') return hasVi ? 'system' : offline;
     if (setting === 'piper') return piperReady ? 'piper' : googleDown ? 'chrome' : 'google'; // not downloaded yet: Google meanwhile
-    if (setting === 'google') return googleDown ? fallback : 'google';
+    if (setting === 'google') return googleDown ? backup : 'google';
     if (hasVi && natural) return 'system'; // auto
-    return googleDown ? fallback : 'google';
+    return googleDown ? backup : 'google';
   }
 
   const GOOGLE_COOLDOWN = 60000; // after a Google TTS failure, stay on the fallback this long (ms)
@@ -191,6 +193,7 @@
   let vieneuState = ''; // storage.local 'vieneuState' (background): 'ready' | 'loading' | 'not-installed' | ... | ''
   let vieneuDownUntil = 0; // after a VieNeu line failed, use Google (then the fallback) until this time
   let announcedVieneu = false;
+  let announcedVieneuBackup = false; // "Google blocked, using VieNeu" said for the current blocked spell
   let hintedVieneu = false; // the "install VieNeu" hint is appended to a Google-blocked status once per page
   let lastVieneuCheck = 0;
   let piperReady = false; // the offline voice is downloaded (storage.local 'piperReady' + background status)
@@ -250,7 +253,7 @@
       root.chrome.storage.local.get('vieneuState', function (o) {
         void root.chrome.runtime.lastError;
         vieneuState = (o && o.vieneuState) || '';
-        if (cfg.ttsEngine === 'vieneu') refreshVieneu(true);
+        if (cfg.ttsEngine === 'vieneu' || googleIsDown(googleDownUntil)) refreshVieneu(true);
       });
     } catch (e) {}
   }
@@ -311,14 +314,25 @@
     lastVieneuCheck = now;
     const recheck = vieneuState === 'not-installed' || vieneuState === 'error' || weak;
     sendBg({ type: 'vieneu', op: recheck ? 'recheck' : 'status' }).then(function (r) {
-      if (r && r.state) vieneuState = r.state;
+      if (!r || !r.state) return;
+      vieneuState = r.state;
+      if (backupIsVieneu() && vieneuOk() && !announcedVieneuBackup) {
+        // learnt only now that VieNeu is there: the next lines use it instead of the system voice
+        announcedVieneuBackup = true;
+        onStatus('SubDub: Google tạm chặn, đang dùng giọng VieNeu');
+        warmVieneu();
+      }
     });
+  }
+  // auto / google with Google blocked: VieNeu (when installed) is the backup voice
+  function backupIsVieneu() {
+    return (cfg.ttsEngine === 'auto' || cfg.ttsEngine === 'google') && googleIsDown(googleDownUntil);
   }
   // Ask the program to load the model: dubbing is really happening (a line is about to be spoken). Throttled; it
   // doubles as the keep-alive while a video plays. Never done from a mere status check.
   let lastWarm = 0;
   function warmVieneu() {
-    if (cfg.ttsEngine !== 'vieneu' || !active) return;
+    if (!(cfg.ttsEngine === 'vieneu' || backupIsVieneu()) || !active) return;
     const now = Date.now();
     if (now - lastWarm < 45000 || !(vieneuState === 'idle' || vieneuState === 'ready' || vieneuState === '')) return;
     lastWarm = now;
@@ -345,11 +359,11 @@
     else refreshVieneu(true); // find out why (crashed? stopped?) so the popup state is right
     noteVieneuFallback();
   }
-  // One-off hint appended to the "Google blocked" status for people who have not set VieNeu up.
+  // One-off hint appended to the "Google blocked" status for people who have not installed VieNeu.
   function vieneuHint() {
-    if (hintedVieneu || cfg.ttsEngine === 'vieneu') return '';
+    if (hintedVieneu || cfg.ttsEngine === 'vieneu' || vieneuState !== 'not-installed') return '';
     hintedVieneu = true;
-    return vieneuState === 'ready' ? ' · chọn giọng VieNeu trong popup để không bị chặn' : ' · cài giọng VieNeu để không bị chặn';
+    return ' · cài giọng VieNeu để không bị chặn';
   }
 
   // Live mode only: nothing but finish(id) clears `speaking`, so a lost end event (speechSynthesis onend never fires)
@@ -499,13 +513,12 @@
         }
         if (!r || !r.ok) {
           googleFailed(r);
-          // instant switch for this very line, no silence gap: installed system voice, else Piper, else chrome.tts
-          if (voice) {
-            voiceKey = voice.name;
-            usingOffscreen = false;
-            dispatch('system', voice, plan, id);
-          } else if (piperReady) speakPiper(plan, id);
-          else speakChrome(plan, id);
+          // instant switch for this very line, no silence gap: VieNeu (when installed), else the installed system
+          // voice, else Piper, else chrome.tts (Google is in its cooldown now, so this never picks Google again)
+          const eng = pickEngine(voice);
+          voiceKey = engineKey(eng, voice);
+          usingOffscreen = eng === 'vieneu' || eng === 'piper';
+          dispatch(eng, voice, plan, id);
           return;
         }
         if (!r.cancelled) {
@@ -622,6 +635,16 @@
     const wasDown = googleIsDown(googleDownUntil);
     googleDownUntil = Math.max(cooldownEnd(Date.now(), GOOGLE_COOLDOWN), (r && r.retryAt) || 0);
     if (wasDown) return; // already on the fallback: no repeated status pill
+    announcedVieneuBackup = false;
+    if (backupIsVieneu()) {
+      if (vieneuOk()) {
+        announcedVieneuBackup = true;
+        onStatus('SubDub: Google tạm chặn, đang dùng giọng VieNeu'); // no un-duck
+        warmVieneu();
+        return;
+      }
+      refreshVieneu(true); // state unknown or stale (installed since?): the system voice covers the lines meanwhile
+    }
     const sysVoice = pickVoice();
     if (sysVoice) {
       onStatus('SubDub: Google tạm chặn, đang dùng giọng ' + sysVoice.name.replace(/^Microsoft\s+/i, '').replace(/\s+-.*$/, '') + ' của máy' + vieneuHint()); // no un-duck

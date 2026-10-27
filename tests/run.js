@@ -963,7 +963,7 @@ test('manifest: MV3, wasm CSP, HF + hf.co host permissions, every referenced fil
   ['https://huggingface.co/*', 'https://*.hf.co/*'].forEach((h) => assert.ok(m.host_permissions.includes(h), h));
   assert.ok(m.permissions.includes('offscreen'));
   assert.ok(m.permissions.includes('nativeMessaging'), 'native bridge to the optional VieNeu program');
-  assert.strictEqual(m.version, '0.5.0');
+  assert.strictEqual(m.version, '0.5.1');
   const files = [m.background.service_worker, m.action.default_popup, 'popup/vieneu.html', 'popup/vieneu.js', 'popup/vieneu.css', 'lib/vieneu.js'];
   m.content_scripts.forEach((cs) => files.push(...(cs.js || []), ...(cs.css || [])));
   Object.values(m.icons).forEach((f) => files.push(f));
@@ -1220,20 +1220,29 @@ test('resolveEngine: vieneu uses the local voice only when selected and ready; o
   assert.strictEqual(D.resolveEngine('vieneu', false, true, false, false, false), 'chrome');
 });
 
-test('resolveEngine: auto / google / system / piper never pick vieneu, even when it is ready', () => {
+test('resolveEngine: system / piper never pick vieneu; auto / google start with Google, VieNeu is the first backup when Google is blocked', () => {
   ['auto', 'google', 'system', 'piper', undefined].forEach((setting) => {
     [false, true].forEach((hasVi) =>
       [false, true].forEach((gDown) =>
         [false, true].forEach((piper) =>
           [false, true].forEach((nat) => {
             const withV = D.resolveEngine(setting, hasVi, gDown, piper, nat, true);
-            assert.notStrictEqual(withV, 'vieneu');
-            assert.strictEqual(withV, D.resolveEngine(setting, hasVi, gDown, piper, nat, false), 'vieneuReady must not change ' + setting);
+            const without = D.resolveEngine(setting, hasVi, gDown, piper, nat, false);
+            const viaGoogle = setting !== 'system' && setting !== 'piper';
+            const naturalFirst = setting !== 'google' && hasVi && nat; // auto: an Edge "Natural" voice beats Google
+            if (viaGoogle && gDown && !naturalFirst) assert.strictEqual(withV, 'vieneu', 'blocked Google -> VieNeu (' + setting + ')');
+            else assert.strictEqual(withV, without, 'vieneuReady must not change ' + setting);
+            assert.notStrictEqual(without, 'vieneu');
           })
         )
       )
     );
   });
+  // not installed / not ready: the old order (system voice, else Piper, else chrome.tts)
+  assert.strictEqual(D.resolveEngine('auto', true, true, true, false, false), 'system');
+  assert.strictEqual(D.resolveEngine('auto', false, true, true, false, false), 'piper');
+  assert.strictEqual(D.resolveEngine('auto', false, true, false, false, false), 'chrome');
+  assert.strictEqual(D.resolveEngine('auto', true, false, true, false, true), 'google'); // Google fine: Google
 });
 
 test('VieNeu cooldown reuses the Google helpers: 60 s, then VieNeu is tried again', () => {

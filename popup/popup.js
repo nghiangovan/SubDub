@@ -57,11 +57,11 @@
     }
     let hint = '';
     if (eng === 'vieneu') hint = 'Giọng VieNeu chạy ngay trên máy bạn, cần cài thêm một lần. Khi chưa sẵn sàng, SubDub tạm đọc bằng Google.';
-    else if (eng === 'google') hint = 'Google Translate TTS: không chính thức, có thể bị giới hạn tần suất; nếu bị chặn sẽ chuyển sang giọng offline (nếu đã tải).';
+    else if (eng === 'google') hint = 'Google Translate TTS: không chính thức, có thể bị giới hạn tần suất; nếu bị chặn sẽ chuyển sang giọng VieNeu (nếu đã cài), rồi giọng của máy hoặc giọng offline.';
     else if (eng === 'piper') hint = 'Giọng Piper tiếng Việt chạy hoàn toàn trên máy: không cần mạng, không giới hạn. Cần tải 1 lần.';
     else if (eng === 'system' && !hasVoices) hint = 'Không tìm thấy giọng tiếng Việt trên hệ thống: dùng giọng offline (nếu đã tải) hoặc chrome.tts.';
-    else if (eng === 'auto' && !hasVoices) hint = 'Máy chưa có giọng tiếng Việt: dùng Google Translate, tự chuyển sang giọng offline khi Google lỗi. Mẹo: cài giọng tiếng Việt của Windows (Settings → Time & language → Speech → Add voices) để có giọng dự phòng tức thì, không cần tải.';
-    else if (eng === 'auto' && hasVoices && !hasNatural) hint = 'Đọc bằng Google Translate. Khi Google tạm chặn sẽ chuyển ngay sang giọng có sẵn của máy (ô trên), không cần tải gì. Chọn "Giọng hệ thống" nếu muốn luôn dùng giọng của máy.';
+    else if (eng === 'auto' && !hasVoices) hint = 'Máy chưa có giọng tiếng Việt: dùng Google Translate, khi Google lỗi tự chuyển sang giọng VieNeu (nếu đã cài) hoặc giọng offline. Mẹo: cài giọng tiếng Việt của Windows (Settings → Time & language → Speech → Add voices) để có giọng dự phòng tức thì, không cần tải.';
+    else if (eng === 'auto' && hasVoices && !hasNatural) hint = 'Đọc bằng Google Translate. Khi Google tạm chặn sẽ chuyển ngay sang giọng VieNeu (nếu đã cài), nếu không thì giọng có sẵn của máy (ô trên). Chọn "Giọng hệ thống" nếu muốn luôn dùng giọng của máy.';
     else if ((eng === 'auto' || eng === 'system') && hasNatural) hint = 'Đang dùng giọng Microsoft Natural của Edge (HoaiMy/NamMinh): tự nhiên, miễn phí, cần mạng. Chọn giọng khác ở ô trên nếu muốn.';
     $('voiceHint').textContent = hint;
   }

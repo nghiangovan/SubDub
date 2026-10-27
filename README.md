@@ -199,11 +199,11 @@ Trên YouTube có thể **kéo phụ đề** tới chỗ khác trong khung video
 
 Cài đặt **Giọng đọc** (`ttsEngine`) có 5 lựa chọn:
 
-- **Tự động (Google, dự phòng offline)** (mặc định): đọc bằng Google Translate. Riêng giọng Microsoft *Natural* (HoaiMy/NamMinh, có trên Edge) được ưu tiên hơn Google. Khi Google lỗi, tiện ích dùng giọng tiếng Việt có sẵn của máy (ví dụ Microsoft An); không có thì dùng Piper (nếu đã tải); rồi thử lại Google sau thời gian chờ. Thanh trạng thái hiện "SubDub: dùng giọng Google Translate (tiếng Việt)".
-- **Google Translate**: luôn ưu tiên Google (vẫn chuyển sang Piper khi Google lỗi và Piper đã tải).
+- **Tự động (Google, dự phòng offline)** (mặc định): đọc bằng Google Translate. Riêng giọng Microsoft *Natural* (HoaiMy/NamMinh, có trên Edge) được ưu tiên hơn Google. Khi Google lỗi, tiện ích dùng giọng **VieNeu** nếu đã cài; chưa cài thì dùng giọng tiếng Việt có sẵn của máy (ví dụ Microsoft An); không có thì dùng Piper (nếu đã tải); rồi thử lại Google sau thời gian chờ. Thanh trạng thái hiện "SubDub: dùng giọng Google Translate (tiếng Việt)".
+- **Google Translate**: luôn ưu tiên Google; khi Google lỗi thì dự phòng giống *Tự động* (VieNeu nếu đã cài, rồi giọng của máy, rồi Piper).
 - **Offline (Piper)**: luôn dùng Piper, không cần mạng sau khi đã tải giọng (chưa tải thì tự tải một lần, Google đọc tạm).
 - **Giọng hệ thống**: chỉ dùng `speechSynthesis` (chọn giọng ở ô bên dưới). Nếu máy không có giọng `vi-*` thì dùng Piper nếu đã tải, nếu không thì `chrome.tts` (có thể không phát ra tiếng).
-- **VieNeu – giọng mượt (cần cài thêm)**: giọng chạy trên máy, tuỳ chọn, chỉ Windows. Xem mục [Giọng VieNeu](#giọng-vieneu-tuỳ-chọn-mượt-hơn). Chế độ *Tự động* **không bao giờ** tự chọn VieNeu.
+- **VieNeu – giọng mượt (cần cài thêm)**: giọng chạy trên máy, tuỳ chọn, chỉ Windows. Xem mục [Giọng VieNeu](#giọng-vieneu-tuỳ-chọn-mượt-hơn). Chế độ *Tự động* vẫn đọc bằng Google trước; VieNeu chỉ là **giọng dự phòng đầu tiên** khi Google tạm chặn.
 
 Về giọng Google Translate:
 
@@ -220,7 +220,7 @@ Về giọng offline Piper:
 
 Về giọng VieNeu: câu nào VieNeu chưa đọc được (chưa cài, đang tải, lỗi, máy thiếu RAM hoặc quá yếu) sẽ được chuyển ngay sang Google, rồi mới đến chuỗi dự phòng như trên (giọng hệ thống, Piper, `chrome.tts`). Sau một lần lỗi, VieNeu nghỉ 60 giây trước khi thử lại.
 
-**Giọng dự phòng có sẵn của Windows (nên cài):** vào *Settings → Time & language → Speech → Add voices*, chọn **Tiếng Việt (Vietnamese)**, rồi khởi động lại Chrome (gõ `chrome://restart`). Máy sẽ có giọng **Microsoft An**: miễn phí, chạy offline, không giới hạn. Ở chế độ *Tự động*, tiện ích vẫn đọc bằng Google Translate cho hay, và **chuyển ngay sang giọng An** khi Google tạm chặn (không cần tải gì). Muốn luôn đọc bằng giọng An thì chọn *Giọng đọc* = **Giọng hệ thống**.
+**Giọng dự phòng có sẵn của Windows (nên cài):** vào *Settings → Time & language → Speech → Add voices*, chọn **Tiếng Việt (Vietnamese)**, rồi khởi động lại Chrome (gõ `chrome://restart`). Máy sẽ có giọng **Microsoft An**: miễn phí, chạy offline, không giới hạn. Ở chế độ *Tự động*, tiện ích vẫn đọc bằng Google Translate cho hay, và **chuyển ngay sang giọng An** khi Google tạm chặn (không cần tải gì; nếu đã cài VieNeu thì VieNeu được dùng trước, An là lớp dự phòng tiếp theo). Muốn luôn đọc bằng giọng An thì chọn *Giọng đọc* = **Giọng hệ thống**.
 
 ## Giọng VieNeu (tuỳ chọn, mượt hơn)
 

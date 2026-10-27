@@ -1,5 +1,7 @@
 /* Google Meet orchestrator (ISOLATED world). Reads Meet's captions; the only thing it ever touches in Meet's UI is the
- * CC button, pressed ONCE per call when the opt-in setting meetAutoCC is on (turning CC off by hand is respected).
+ * CC button, pressed ONCE per call when the opt-in setting meetAutoCC is on (turning CC off by hand is respected). On
+ * Workspace calls with speech translation the bar has a "captions / translation" button instead, which opens a menu
+ * (Turn on captions | Translate speech); then it opens that menu and picks "Turn on captions", nothing else.
  *   1. finds Meet's live-caption container ([role=region] "Captions", localised labels, heuristic fallback)
  *   2. parses speaker blocks (avatar img + name + text) and feeds each block's snapshots to lib/sentences.js
  *   3. every FINAL English sentence is translated once (content/livetr.js: on-device Translator first, Google
@@ -27,6 +29,7 @@
   const CC_WORD = /(captions?|phụ đề|subtítulos|sous-titres|untertitel|sottotitoli|legendas?|ondertitels|napisy|altyazı|субтитр|字幕|자막)/i;
   const CC_ON = /(turn off|tắt|desactivar|désactiver|ausschalten|disattiva|desativar|uitschakelen|wyłącz|kapat|выключить|关闭|끄기)/i;
   const CC_OFF = /(turn on|bật|activar|activer|einschalten|attiva|ativar|inschakelen|włącz|aç|включить|开启|켜기)/i;
+  const TR_WORD = /(translat|dịch|traduc|übersetz|tradu|vertal|tłumacz|çevir|перев|翻译|翻譯|翻訳|번역)/i;
   const SELF_NAMES = ['you', 'bạn', 'usted', 'vous', 'você', 'jij', 'вы', '你', 'あなた', '당신']; // no 'tú'/'tu'/'sen'/'du': real first names
 
   let settings = S.normalize({});
@@ -86,9 +89,72 @@
       const label = b.getAttribute('aria-label') || '';
       if (!CC_WORD.test(label)) continue;
       if (b.hasAttribute('aria-pressed') || CC_ON.test(label) || CC_OFF.test(label)) return b;
-      if (!loose) loose = b;
+      if (!loose && !isMenuOpener(b) && !TR_WORD.test(label)) loose = b;
     }
     return loose;
+  }
+
+  // Workspace calls with speech translation: one bar button opens a menu with "Turn on captions" and "Translate
+  // speech", so CC is two clicks away. The opener says captions and/or translation but not turn on/off.
+  function isMenuOpener(b) {
+    return b.hasAttribute('aria-haspopup') || b.hasAttribute('aria-expanded');
+  }
+  function ccMenuButton() {
+    const btns = document.querySelectorAll('button[aria-label], [role="button"][aria-label]');
+    let loose = null;
+    for (let i = 0; i < btns.length; i++) {
+      const b = btns[i];
+      if (b.closest('#yvd-meet-panel')) continue;
+      const label = b.getAttribute('aria-label') || '';
+      if (!TR_WORD.test(label) && !CC_WORD.test(label)) continue;
+      if (b.hasAttribute('aria-pressed') || CC_ON.test(label) || CC_OFF.test(label)) continue;
+      if (isMenuOpener(b)) return b;
+      if (!loose && TR_WORD.test(label)) loose = b;
+    }
+    return loose;
+  }
+  // The caption item inside that menu (it may be labelled by its text only)
+  function menuCaptionItem(opener) {
+    const items = document.querySelectorAll('button, [role="button"], [role="menuitem"], [role="menuitemcheckbox"], [role="switch"]');
+    for (let i = 0; i < items.length; i++) {
+      const b = items[i];
+      if (b === opener || b.closest('#yvd-meet-panel')) continue;
+      const label = b.getAttribute('aria-label') || b.innerText || '';
+      if (CC_WORD.test(label) && (CC_OFF.test(label) || CC_ON.test(label))) return b;
+    }
+    return null;
+  }
+  function itemLabel(b) {
+    return b.getAttribute('aria-label') || b.innerText || '';
+  }
+  // pressing the opener again closes it (only while it is still open)
+  function closeMenu(opener) {
+    const expanded = opener.getAttribute('aria-expanded');
+    const item = menuCaptionItem(opener);
+    if (expanded === 'true' || (expanded === null && item && item.offsetParent !== null)) opener.click();
+  }
+  // Open the menu, wait for it, press "Turn on captions" only if it says turn ON, then close the menu again.
+  function turnOnViaMenu() {
+    const opener = ccMenuButton();
+    if (!opener) return;
+    autoCC.busy = true;
+    opener.click();
+    let n = 0;
+    const timer = setInterval(() => {
+      const item = menuCaptionItem(opener);
+      if (!item && ++n < 12) return; // the menu animates in
+      clearInterval(timer);
+      autoCC.busy = false;
+      if (!item) return;
+      const label = itemLabel(item);
+      if (CC_ON.test(label)) {
+        autoCC.done = true; // captions are already on: leave them
+      } else if (CC_OFF.test(label)) {
+        item.click();
+        P.status('SubDub: đã tự bật phụ đề (CC) của Meet', 4000);
+      }
+      setTimeout(() => closeMenu(opener), 300);
+    }, 150);
   }
 
   // ---------- auto CC (opt-in) ----------
@@ -97,12 +163,12 @@
   // who turns CC off by hand keeps it off. Leaving the call (no caption button any more) re-arms it.
   const AUTO_CC_SETTLE = 2000;
   const AUTO_CC_RETRY = 2500;
-  const autoCC = { done: false, tries: 0, offSince: 0, lastTry: 0, meeting: '' };
+  const autoCC = { done: false, busy: false, tries: 0, offSince: 0, lastTry: 0, meeting: '' };
   function maybeAutoCC(cc) {
     const now = Date.now();
     if (autoCC.meeting !== location.pathname) {
       // a different meeting (Meet is a single-page app): arm again
-      Object.assign(autoCC, { done: false, tries: 0, offSince: 0, lastTry: 0, meeting: location.pathname });
+      Object.assign(autoCC, { done: false, busy: false, tries: 0, offSince: 0, lastTry: 0, meeting: location.pathname });
     }
     if (cc === 'none') {
       autoCC.offSince = 0;
@@ -112,7 +178,8 @@
       autoCC.done = true;
       return;
     }
-    if (autoCC.done || cc !== 'off' || !settings.meetAutoCC || !siteOn()) {
+    if (autoCC.busy) return;
+    if (autoCC.done || (cc !== 'off' && cc !== 'menu') || !settings.meetAutoCC || !siteOn()) {
       autoCC.offSince = 0;
       return;
     }
@@ -120,6 +187,12 @@
     if (now - autoCC.offSince < AUTO_CC_SETTLE || now - autoCC.lastTry < AUTO_CC_RETRY) return;
     if (autoCC.tries >= 3) {
       autoCC.done = true; // give up quietly; the panel keeps showing the "turn on CC" hint
+      return;
+    }
+    if (cc === 'menu') {
+      autoCC.tries++;
+      autoCC.lastTry = now;
+      turnOnViaMenu();
       return;
     }
     const b = captionButton();
@@ -130,10 +203,10 @@
     P.status('SubDub: đã tự bật phụ đề (CC) của Meet', 4000);
   }
 
-  // 'on' | 'off' | 'unknown' | 'none' (no caption button in the page: not in a call)
+  // 'on' | 'off' | 'unknown' | 'menu' (CC is inside the captions/translation menu) | 'none' (not in a call)
   function ccState() {
     const b = captionButton();
-    if (!b) return 'none';
+    if (!b) return ccMenuButton() ? 'menu' : 'none';
     const pressed = b.getAttribute('aria-pressed');
     if (pressed === 'true') return 'on';
     if (pressed === 'false') return 'off';
@@ -408,7 +481,7 @@
     maybeAutoCC(cc);
     const inCall = !!container || cc !== 'none';
     let hint = null;
-    if (!container && (cc === 'off' || cc === 'unknown')) hint = HINT;
+    if (!container && (cc === 'off' || cc === 'unknown' || cc === 'menu')) hint = HINT;
     // dub-only mode hides the panel, except when it has something to tell
     const show = inCall && (wantsSubs() || !!hint);
     setPanel(show);

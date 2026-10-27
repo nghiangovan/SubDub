@@ -945,13 +945,23 @@ test('manifest: Google Meet content script, panel CSS (original on top, Vietname
   assert.ok(/\.yvd-m-vi\.yvd-m-bi\s*\{[^}]*font-size:\s*0\.85em[^}]*color:\s*#9ecbff/.test(css));
   const js = fs.readFileSync(path.join(root, 'content', 'meet-panel.js'), 'utf8');
   assert.ok(js.indexOf("'yvd-m-en'") < js.indexOf("'yvd-m-vi'"), 'English line must be rendered above the Vietnamese one');
-  // Meet code touches exactly one Meet control: the CC button, inside the opt-in auto-CC routine
+  // Meet code touches only the CC control (or, on Workspace, the captions/translation menu that holds it), and only
+  // inside the opt-in auto-CC routines
   const src = fs.readFileSync(path.join(root, 'content', 'meet.js'), 'utf8');
   assert.ok(!/dispatchEvent\(/.test(src), 'meet.js must not dispatch events on Meet');
-  const clicks = src.match(/\.click\(/g) || [];
-  assert.strictEqual(clicks.length, 1, 'only the auto-CC routine may click');
-  const auto = src.slice(src.indexOf('function maybeAutoCC'), src.indexOf('function maybeAutoCC') + 1500);
+  const from = src.indexOf('function closeMenu'), to = src.indexOf('function ccState');
+  assert.ok(from > 0 && to > from);
+  let i = -1, clicks = 0;
+  while ((i = src.indexOf('.click(', i + 1)) >= 0) {
+    clicks++;
+    assert.ok(i > from && i < to, 'a click outside the auto-CC routines');
+  }
+  assert.strictEqual(clicks, 4, 'CC button, menu opener, "Turn on captions" item, closing the menu');
+  const auto = src.slice(src.indexOf('function maybeAutoCC'), to);
   assert.ok(/settings\.meetAutoCC/.test(auto) && /b\.click\(\)/.test(auto) && /captionButton\(\)/.test(auto), 'the click is the opt-in CC button');
+  const menu = src.slice(src.indexOf('function turnOnViaMenu'), src.indexOf('function maybeAutoCC'));
+  assert.ok(/else if \(CC_OFF\.test\(label\)\) \{\s*item\.click\(\)/.test(menu), 'in the menu only a "turn on captions" item is pressed');
+  assert.ok(!/TR_WORD/.test(src.slice(src.indexOf('function menuCaptionItem'), src.indexOf('function itemLabel'))), 'never the Translate speech item');
 });
 
 // ---------- manifest / packaging ----------
@@ -963,7 +973,7 @@ test('manifest: MV3, wasm CSP, HF + hf.co host permissions, every referenced fil
   ['https://huggingface.co/*', 'https://*.hf.co/*'].forEach((h) => assert.ok(m.host_permissions.includes(h), h));
   assert.ok(m.permissions.includes('offscreen'));
   assert.ok(m.permissions.includes('nativeMessaging'), 'native bridge to the optional VieNeu program');
-  assert.strictEqual(m.version, '0.5.2');
+  assert.strictEqual(m.version, '0.5.3');
   const files = [m.background.service_worker, m.action.default_popup, 'popup/vieneu.html', 'popup/vieneu.js', 'popup/vieneu.css', 'lib/vieneu.js'];
   m.content_scripts.forEach((cs) => files.push(...(cs.js || []), ...(cs.css || [])));
   Object.values(m.icons).forEach((f) => files.push(f));

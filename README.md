@@ -118,7 +118,7 @@ Tiện ích đọc **phụ đề trực tiếp (CC) của chính Meet**, dịch 
 1. Vào cuộc họp trên `meet.google.com`.
 2. **Bật phụ đề CC** (nút *Turn on captions* hoặc nhấn phím `c`).
 3. Trong cài đặt phụ đề của Meet, chọn **Meeting language = English**.
-4. Bảng "SubDub · Phụ đề Meet" tự xuất hiện ở giữa phía dưới. Nếu CC chưa bật, bảng hiện nhắc: "Bật CC (phím c) và chọn Meeting language = English". Mặc định tiện ích **tự bật CC một lần** khi bạn vào cuộc họp (tắt được trong popup: "Tự bật phụ đề (CC) của Meet khi vào cuộc họp"). Đó là nút duy nhất của Meet mà tiện ích bấm; nếu bạn tự tắt CC thì tiện ích để yên cho tới cuộc họp sau.
+4. Bảng "SubDub · Phụ đề Meet" tự xuất hiện ở giữa phía dưới. Nếu CC chưa bật, bảng hiện nhắc: "Bật CC (phím c) và chọn Meeting language = English". Mặc định tiện ích **tự bật CC một lần** khi bạn vào cuộc họp (tắt được trong popup: "Tự bật phụ đề (CC) của Meet khi vào cuộc họp"). Đó là nút duy nhất của Meet mà tiện ích bấm; nếu bạn tự tắt CC thì tiện ích để yên cho tới cuộc họp sau. Với Meet bản doanh nghiệp (Google Workspace) có tính năng dịch giọng nói, thanh công cụ không có nút CC riêng mà có một nút **phụ đề / dịch** mở menu nhỏ (*Turn on captions* | *Translate speech*): tiện ích mở menu đó, chỉ bấm **Turn on captions** (không bao giờ bấm *Translate speech*) rồi đóng menu lại.
 
 **Bảng phụ đề**
 

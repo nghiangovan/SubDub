@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SubDub – Phụ đề & lồng tiếng",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlhkmPNQ6riR6UDqgb5n9iB0I+gMgtyCUgKyZNnQfLk3M6kRFxxHo3KoenBJbZuHNVXFtB5mvHhmRg9C98aDZF/74lMgrvE+v6Txk1Ec2nZIe/iDxrdmzdK7cletBS9/+Aco40h29UTT2e6gy937nO225De6tj8cKNOLTEDohB1BU55+ipeDfGSv3J4gx9rOGyyjdyW7JLpe0sCc6546zmnXETRLG9rlEXNu/j0mxfQeHppfzysqtbPVQIbq1628fO8pnYdErDs+IWHXDhugdw0AiQa0hkHJbIFWm68rD0I8rH/QoCnHM1I55iew0IGpN6OYB+yP5S+te59VO0tzCdQIDAQAB",
   "description": "Phụ đề và lồng tiếng tiếng Việt cho video YouTube và phụ đề trực tiếp Google Meet (dịch trên máy, giọng offline Piper, giọng VieNeu tuỳ chọn).",
   "permissions": [

@@ -72,9 +72,31 @@
   let vnVoice = '';
   let vnVoicesKey = '';
   let promoDismissed = false;
+  let vnInstalled = false; // from storage.local 'vieneuState' (background), so opening the popup never starts the program
   const openGuide = () => chrome.tabs.create({ url: chrome.runtime.getURL('popup/vieneu.html') });
+  const openUninstall = () => chrome.tabs.create({ url: chrome.runtime.getURL('popup/vieneu.html#go') });
+  // The big card invites people who have not installed VieNeu. Once it is dismissed (×), or when VieNeu is installed,
+  // a one-line link under "Giọng đọc" keeps the way in (install guide / how to remove) always reachable.
   function updatePromo() {
-    $('vieneuPromo').hidden = promoDismissed || $('ttsEngine').value === 'vieneu';
+    const eng = $('ttsEngine').value;
+    const card = !promoDismissed && !vnInstalled && eng !== 'vieneu';
+    $('vieneuPromo').hidden = !card;
+    const line = $('vieneuLine');
+    line.textContent = '';
+    line.hidden = card || eng === 'vieneu';
+    if (line.hidden) return;
+    const a = document.createElement('a');
+    a.href = '#';
+    a.textContent = vnInstalled ? 'Xem cách gỡ' : 'Cài giọng VieNeu';
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      (vnInstalled ? openUninstall : openGuide)();
+    });
+    line.append(vnInstalled ? 'Giọng VieNeu: đã cài, tự dùng khi Google bị chặn. ' : 'Muốn giọng đọc mượt hơn, không bị Google chặn? ', a);
+  }
+  function setVnInstalled(state) {
+    vnInstalled = !!state && state !== 'not-installed';
+    updatePromo();
   }
   function fillVieneuVoices(fromHost) {
     const list = V.voiceList(fromHost);
@@ -108,6 +130,8 @@
     $('vieneuProgress').value = d.pct;
     $('vieneuDownload').hidden = !d.download;
     $('vieneuDownload').disabled = false;
+    // how to remove it only makes sense once it is there
+    $('vieneuUninstall').hidden = !(r && r.state) || r.state === 'not-installed';
   }
   // op 'recheck' reconnects from scratch (also finds a program installed meanwhile); 'status' only reads
   function pollVieneu(op) {
@@ -288,8 +312,20 @@
     fillVoices(s.ttsVoice);
     vnVoice = s.vieneuVoice;
     fillVieneuVoices(null);
-    promoDismissed = await new Promise((res) => chrome.storage.local.get('vieneuPromoDismissed', (o) => res(!!(o && o.vieneuPromoDismissed))));
-    updatePromo();
+    const loc = await new Promise((res) => chrome.storage.local.get(['vieneuPromoDismissed', 'vieneuState'], (o) => res(o || {})));
+    promoDismissed = !!loc.vieneuPromoDismissed;
+    setVnInstalled(loc.vieneuState);
+    // never checked yet (installed but always on "Tự động"?): ask once; not installed fails at once, installed only
+    // answers hello (no model load) and is dropped after ~30 s
+    if (!loc.vieneuState && $('ttsEngine').value !== 'vieneu') {
+      chrome.runtime.sendMessage({ type: 'vieneu', op: 'status' }, (r) => {
+        void chrome.runtime.lastError;
+        if (r && r.state) setVnInstalled(r.state);
+      });
+    }
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === 'local' && ch.vieneuState) setVnInstalled(ch.vieneuState.newValue);
+    });
     if (window.speechSynthesis) speechSynthesis.addEventListener('voiceschanged', () => fillVoices($('ttsVoice').value || s.ttsVoice));
     if (await S.getApiKey()) $('claudeKey').placeholder = 'Đã lưu (nhập để thay)';
 
@@ -346,6 +382,10 @@
       });
     });
     $('vieneuPromoGuide').addEventListener('click', openGuide);
+    $('vieneuUninstallHelp').addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: chrome.runtime.getURL('popup/vieneu.html#go') });
+    });
     $('vieneuPromoClose').addEventListener('click', () => {
       promoDismissed = true;
       updatePromo();

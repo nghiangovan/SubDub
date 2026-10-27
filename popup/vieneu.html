@@ -76,8 +76,27 @@
       <li><b>Đã di chuyển hay xoá thư mục SubDub:</b> giọng VieNeu nằm ở thư mục riêng của Windows nên không bị mất, nhưng tiện ích SubDub thì vẫn cần thư mục của nó.</li>
     </ul>
 
-    <h2>Gỡ giọng VieNeu</h2>
-    <p>Nhấp đúp file <code>Go-giong-VieNeu.bat</code> trong thư mục SubDub và chờ cửa sổ báo xong. File này xoá toàn bộ giọng VieNeu đã tải về (giải phóng khoảng 550 MB) và gỡ đăng ký với Chrome. Sau đó nên chọn <b>Giọng đọc = Tự động</b> trong popup.</p>
+    <h2 id="go">Gỡ giọng VieNeu</h2>
+    <p>Không muốn giữ VieNeu nữa? Gỡ đi sẽ giải phóng khoảng 550 MB. SubDub vẫn hoạt động bình thường với giọng Google.</p>
+    <ol class="steps">
+      <li>
+        <h3>Mở thư mục SubDub</h3>
+        <p>Cùng thư mục bạn đã dùng để cài (có file <code>Go-giong-VieNeu.bat</code> nằm cạnh <code>Cai-giong-VieNeu.bat</code>).</p>
+        <p class="tip">Quên thư mục để ở đâu? Gõ <code>chrome://extensions</code>, bấm <b>Chi tiết</b> ở thẻ SubDub, xem dòng <b>Nguồn (Source)</b>.</p>
+      </li>
+      <li>
+        <h3>Nhấp đúp vào file <code>Go-giong-VieNeu.bat</code></h3>
+        <p>Nếu Windows hỏi có cho chạy không, bấm <b>Chạy (Run)</b>.</p>
+      </li>
+      <li>
+        <h3>Gõ <code>Y</code> rồi nhấn Enter</h3>
+        <p>Cửa sổ hỏi lại cho chắc. Gõ <code>Y</code> để gỡ (gõ <code>N</code> để huỷ), chờ báo xong rồi nhấn phím bất kỳ để đóng.</p>
+      </li>
+      <li>
+        <h3>Trong popup SubDub, chọn <b>Giọng đọc = Tự động</b></h3>
+        <p>Nếu trước đó bạn đang chọn VieNeu. Muốn dùng lại sau này thì chỉ cần cài lại theo các bước ở trên.</p>
+      </li>
+    </ol>
 
     <footer>
       <p>Giọng VieNeu dùng mã VieNeu-TTS, mô hình VieNeu-TTS-v3-Nano và bộ chuyển chữ sea-g2p, cùng giấy phép Apache-2.0. Chúng được tải về lúc cài, không nằm sẵn trong SubDub. Xem <code>vendor/NOTICE.md</code>.</p>

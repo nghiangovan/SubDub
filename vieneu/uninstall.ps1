@@ -21,7 +21,7 @@ try {
     Write-Host '==============================================' -ForegroundColor Cyan
     Write-Host ''
     Write-Host 'Sẽ xóa:'
-    Write-Host "  - Thư mục $Root (khoảng 800 MB: Python, mô hình giọng)"
+    Write-Host "  - Thư mục $Root (khoảng 550 MB: Python, mô hình giọng)"
     Write-Host '  - Mục đăng ký với Chrome của giọng VieNeu'
     Write-Host 'SubDub và giọng Google không bị ảnh hưởng.'
     Write-Host ''

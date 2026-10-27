@@ -963,7 +963,7 @@ test('manifest: MV3, wasm CSP, HF + hf.co host permissions, every referenced fil
   ['https://huggingface.co/*', 'https://*.hf.co/*'].forEach((h) => assert.ok(m.host_permissions.includes(h), h));
   assert.ok(m.permissions.includes('offscreen'));
   assert.ok(m.permissions.includes('nativeMessaging'), 'native bridge to the optional VieNeu program');
-  assert.strictEqual(m.version, '0.5.1');
+  assert.strictEqual(m.version, '0.5.2');
   const files = [m.background.service_worker, m.action.default_popup, 'popup/vieneu.html', 'popup/vieneu.js', 'popup/vieneu.css', 'lib/vieneu.js'];
   m.content_scripts.forEach((cs) => files.push(...(cs.js || []), ...(cs.css || [])));
   Object.values(m.icons).forEach((f) => files.push(f));

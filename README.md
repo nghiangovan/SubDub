@@ -228,6 +228,12 @@ Về giọng VieNeu: câu nào VieNeu chưa đọc được (chưa cài, đang t
 
 **Cần có:** Windows 10/11 và Chrome (Mac, Linux chưa hỗ trợ); khoảng **550 MB** ổ đĩa; khoảng **0,6 GB RAM** khi đang lồng tiếng; có mạng lúc cài (một lần).
 
+Mở popup SubDub sẽ thấy thẻ **Giọng đọc mượt hơn**. Bấm **Xem hướng dẫn** để mở trang hướng dẫn từng bước. Khung **Tình trạng hiện tại** trên trang đó cho biết máy đã cài VieNeu hay chưa.
+
+![Thẻ Giọng đọc mượt hơn trong popup, nút Xem hướng dẫn](docs/images/6-vieneu-popup-card.png)
+
+![Trang hướng dẫn cài VieNeu, khung Tình trạng hiện tại báo chưa cài](docs/images/7-vieneu-guide.png)
+
 **Cách cài** (không cần gõ lệnh, không cần quyền quản trị):
 
 1. Mở thư mục SubDub đã giải nén lúc cài tiện ích (thư mục có file `Cai-giong-VieNeu.bat`). Quên chỗ để? Vào `chrome://extensions`, bấm **Chi tiết** ở thẻ SubDub, dòng **Nguồn (Source)** cho biết đường dẫn.
@@ -235,9 +241,18 @@ Về giọng VieNeu: câu nào VieNeu chưa đọc được (chưa cài, đang t
 3. **Chờ** cửa sổ báo cài xong (vài phút, tải khoảng 550 MB). Đừng đóng cửa sổ giữa chừng.
 4. Quay lại Chrome, mở popup SubDub, ở mục **Giọng đọc** chọn **VieNeu – giọng mượt**. Đợi dòng trạng thái báo **"sẵn sàng ✓"** (bấm **Kiểm tra lại** nếu cần). Chọn giọng (nữ/nam, Bắc/Nam…) ở ô **Giọng VieNeu**.
 
-Trong popup có thẻ nhỏ "Muốn giọng đọc mượt hơn, không bị Google chặn?" với nút **Xem hướng dẫn** (mở trang hướng dẫn từng bước `popup/vieneu.html`, có khung trạng thái trực tiếp). Bấm × để ẩn thẻ. Khi Google bị chặn, thanh trạng thái trên video cũng nhắc một lần "cài giọng VieNeu để không bị chặn".
+   ![Chọn Giọng đọc = VieNeu, dòng trạng thái báo sẵn sàng](docs/images/11-vieneu-ready.png)
 
-**Gỡ cài đặt:** nhấp đúp `Go-giong-VieNeu.bat`; file này xoá giọng đã tải (khoảng 550 MB) và gỡ đăng ký với Chrome. Sau đó chọn **Giọng đọc = Tự động**.
+Bấm × để ẩn thẻ **Giọng đọc mượt hơn** (trang hướng dẫn là `popup/vieneu.html`); sau đó dưới mục **Giọng đọc** vẫn còn một dòng nhỏ **Cài giọng VieNeu** để mở lại hướng dẫn. Khi đã cài, dòng này đổi thành "Giọng VieNeu: đã cài, tự dùng khi Google bị chặn. **Xem cách gỡ**". Khi Google bị chặn, thanh trạng thái trên video cũng nhắc một lần "cài giọng VieNeu để không bị chặn".
+
+**Gỡ cài đặt** (không muốn giữ VieNeu nữa):
+
+1. Mở thư mục SubDub (cùng chỗ có `Cai-giong-VieNeu.bat`).
+2. **Nhấp đúp** `Go-giong-VieNeu.bat` (Windows hỏi thì bấm **Chạy (Run)**).
+3. Gõ **`Y`** rồi Enter để xác nhận, chờ báo xong. File này xoá giọng đã tải (khoảng 550 MB) và gỡ đăng ký với Chrome; SubDub vẫn dùng giọng Google bình thường.
+4. Nếu đang chọn VieNeu, đổi **Giọng đọc = Tự động** trong popup.
+
+Trong popup (khi chọn VieNeu và đã cài) có dòng nhắc cách gỡ và liên kết **Xem cách gỡ** mở thẳng phần này của trang hướng dẫn.
 
 **Gặp trục trặc**
 

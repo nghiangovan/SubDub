@@ -1,0 +1,25 @@
+{
+  "description": "Caption snapshots of one speaker block captured in a real Google Meet test (2026-10-27, Meet UI in English, strong-accent test audio played into the mic). Each snapshot is the full text of the block at a later moment: words are appended, and recent words are rewritten (\"We.\" becomes \"Can we schedule ...\"). Used by tests/run.js.",
+  "speaker": "You",
+  "snapshots": [
+    "Hello, everyone! Good morning. Actually, I want to discuss about the project timeline. We are little bit behind the schedule because the design team is needing to know me. Your phone number. Performance problem. We.",
+    "Hello, everyone! Good morning. Actually, I want to discuss about the project timeline. We are little bit behind the schedule because the design team is needing to know me. Your phone number. Performance problem. We. I will.",
+    "Hello, everyone! Good morning. Actually, I want to discuss about the project timeline. We are little bit behind the schedule because the design team is needing to know me. Your phone number. Performance problem. We. I will share",
+    "Hello, everyone! Good morning. Actually, I want to discuss about the project timeline. We are little bit behind the schedule because the design team is needing to know me. Your phone number. Performance problem. We. I will share the updated report with the whole team before that.",
+    "Hello, everyone! Good morning. Actually, I want to discuss about the project timeline. We are little bit behind the schedule because the design team is needing to know me. Your phone number. Performance problem. Can we schedule the next call on Thursday afternoon? I will share the updated report with the whole team before that."
+  ],
+  "expectedFinals": [
+    "Hello, everyone!",
+    "Good morning.",
+    "Actually, I want to discuss about the project timeline.",
+    "We are little bit behind the schedule because the design team is needing to know me.",
+    "Your phone number.",
+    "Performance problem.",
+    "Can we schedule the next call on Thursday afternoon?",
+    "I will share the updated report with the whole team before that."
+  ],
+  "neverFinal": [
+    "We.",
+    "We. I will."
+  ]
+}

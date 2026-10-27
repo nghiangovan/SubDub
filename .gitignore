@@ -1,0 +1,9 @@
+# test audio (not for publishing)
+samples/
+# Chrome / tooling
+_metadata/
+node_modules/
+.claude/
+.codex/
+.DS_Store
+Thumbs.db

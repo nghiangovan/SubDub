@@ -1,0 +1,32 @@
+:root { color-scheme: light dark; --bg: #ffffff; --fg: #0b0f19; --muted: #5b6475; --line: #dbe3ef; --accent: #1565c0; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0a0a0c; --fg: #f5f7fa; --muted: #9aa6b8; --line: #1f2a3a; --accent: #4a9eff; } }
+* { box-sizing: border-box; }
+body { width: 320px; margin: 0; padding: 12px 14px 14px; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; }
+header { display: flex; align-items: center; justify-content: space-between; }
+h1 { font-size: 15px; margin: 0; }
+section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.label { display: block; margin: 8px 0 3px; color: var(--muted); font-size: 12px; }
+.label b { color: var(--fg); font-weight: 600; margin-left: 4px; }
+.radios { display: flex; flex-direction: column; gap: 3px; }
+.check { display: block; margin-top: 8px; }
+select, input[type="text"], input[type="password"] { width: 100%; padding: 5px 6px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+[hidden] { display: none !important; }
+.hint { color: var(--muted); font-size: 11px; margin-top: 3px; }
+footer { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+button { padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer; font: inherit; }
+button:hover { border-color: var(--accent); }
+.switch { position: relative; width: 38px; height: 22px; display: inline-block; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; inset: 0; background: #7a8494; border-radius: 22px; transition: background .15s; cursor: pointer; }
+.slider::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .15s; }
+.switch input:checked + .slider { background: var(--accent); }
+.switch input:checked + .slider::before { transform: translateX(16px); }
+
+.dl { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.dl button { align-self: flex-start; border-color: var(--accent); color: var(--accent); }
+.dl button:disabled { opacity: .55; cursor: default; }
+progress { width: 100%; height: 8px; accent-color: var(--accent); }
+.ok { color: var(--accent); }
+button.spaced { margin-top: 8px; }
+.hint.warn { border-left: 3px solid var(--accent); padding-left: 6px; color: var(--fg); }

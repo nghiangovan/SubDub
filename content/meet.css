@@ -1,0 +1,139 @@
+/* Google Meet caption panel (blue / white / black). Everything is scoped under #yvd-meet-panel. */
+#yvd-meet-panel {
+  all: initial;
+  position: fixed;
+  left: 50%;
+  bottom: 110px;
+  transform: translateX(-50%);
+  width: min(760px, 92vw);
+  height: 240px;
+  min-width: 260px;
+  min-height: 60px;
+  max-height: 90vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 2147483000;
+  background: rgba(0, 0, 0, 0.86);
+  border: 1px solid #1e88e5;
+  border-radius: 10px;
+  color: #fff;
+  font: 400 17.6px/1.4 Roboto, "Google Sans", Arial, sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+#yvd-meet-panel.yvd-m-placed { transform: none; }
+#yvd-meet-panel.yvd-m-collapsed { height: auto !important; min-height: 0; width: min(360px, 92vw) !important; }
+#yvd-meet-panel.yvd-m-collapsed .yvd-m-grip { display: none; }
+#yvd-meet-panel.yvd-m-collapsed .yvd-m-body,
+#yvd-meet-panel.yvd-m-collapsed .yvd-m-hist { display: none; }
+#yvd-meet-panel *, #yvd-meet-panel *::before, #yvd-meet-panel *::after { box-sizing: border-box; }
+#yvd-meet-panel [hidden] { display: none !important; }
+
+#yvd-meet-panel .yvd-m-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: #0b1a2e;
+  border-bottom: 1px solid #1e88e5;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+  font-size: 12px;
+  flex: none;
+}
+#yvd-meet-panel .yvd-m-title { font-weight: 600; color: #9ecbff; white-space: nowrap; }
+#yvd-meet-panel .yvd-m-spacer { flex: 1; }
+#yvd-meet-panel .yvd-m-status {
+  display: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border: 1px solid #1e88e5;
+  border-radius: 999px;
+  color: #fff;
+}
+#yvd-meet-panel .yvd-m-status.yvd-m-show { display: inline-block; }
+#yvd-meet-panel .yvd-m-btn {
+  all: unset;
+  display: inline-block;
+  box-sizing: border-box;
+  cursor: pointer;
+  padding: 1px 8px;
+  border: 1px solid #1e88e5;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+#yvd-meet-panel .yvd-m-btn:hover { background: #1e88e5; }
+
+#yvd-meet-panel .yvd-m-body { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+#yvd-meet-panel .yvd-m-hint {
+  flex: none;
+  margin: 8px 10px 0;
+  padding: 6px 10px;
+  border-left: 3px solid #1e88e5;
+  background: rgba(30, 136, 229, 0.18);
+  color: #fff;
+  font-size: 0.85em;
+}
+#yvd-meet-panel .yvd-m-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 12px 8px; }
+#yvd-meet-panel .yvd-m-idle { color: #9ecbff; opacity: 0.8; font-size: 0.85em; padding: 8px 0; }
+
+#yvd-meet-panel .yvd-m-entry { margin-top: 6px; }
+#yvd-meet-panel .yvd-m-spk { color: #4a9eff; font-size: 0.68em; font-weight: 600; letter-spacing: 0.02em; }
+/* original line on top, full size; translation below, slightly smaller, light blue */
+#yvd-meet-panel .yvd-m-en { color: #fff; font-weight: 500; }
+#yvd-meet-panel .yvd-m-vi { color: #fff; font-weight: 500; }
+#yvd-meet-panel .yvd-m-vi.yvd-m-bi { font-size: 0.85em; font-weight: 400; color: #9ecbff; }
+#yvd-meet-panel .yvd-m-vi.yvd-m-wait { color: #9ecbff; opacity: 0.6; font-size: 0.85em; }
+#yvd-meet-panel .yvd-m-interim { opacity: 0.62; }
+#yvd-meet-panel .yvd-m-interim .yvd-m-en,
+#yvd-meet-panel .yvd-m-interim .yvd-m-vi { font-style: italic; }
+
+#yvd-meet-panel .yvd-m-hist {
+  position: absolute;
+  inset: 31px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+}
+#yvd-meet-panel .yvd-m-histbar { display: flex; gap: 6px; padding: 6px 10px; border-bottom: 1px solid #1f2a3a; flex: none; }
+#yvd-meet-panel .yvd-m-histlist { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 12px; font-size: 0.8em; }
+#yvd-meet-panel .yvd-m-hrow { margin-bottom: 8px; }
+#yvd-meet-panel .yvd-m-hmeta { color: #4a9eff; font-size: 0.8em; }
+#yvd-meet-panel .yvd-m-hen { color: #fff; }
+#yvd-meet-panel .yvd-m-hvi { color: #9ecbff; }
+
+/* click a line to copy just that line */
+#yvd-meet-panel .yvd-m-copy { cursor: copy; border-radius: 3px; }
+#yvd-meet-panel .yvd-m-copy:hover { background: rgba(30, 136, 229, 0.18); }
+#yvd-meet-panel .yvd-m-copy.yvd-m-copied { background: rgba(30, 136, 229, 0.35); }
+
+/* shown while the reader is scrolled up and new lines arrive */
+#yvd-meet-panel .yvd-m-jump {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+/* resize grips on all four edges and corners (invisible hit areas over the panel border) */
+#yvd-meet-panel .yvd-m-grip { position: absolute; z-index: 5; touch-action: none; }
+#yvd-meet-panel .yvd-m-grip-n, #yvd-meet-panel .yvd-m-grip-s { left: 10px; right: 10px; height: 7px; cursor: ns-resize; }
+#yvd-meet-panel .yvd-m-grip-e, #yvd-meet-panel .yvd-m-grip-w { top: 10px; bottom: 10px; width: 7px; cursor: ew-resize; }
+#yvd-meet-panel .yvd-m-grip-n { top: 0; }
+#yvd-meet-panel .yvd-m-grip-s { bottom: 0; }
+#yvd-meet-panel .yvd-m-grip-e { right: 0; }
+#yvd-meet-panel .yvd-m-grip-w { left: 0; }
+#yvd-meet-panel .yvd-m-grip-ne, #yvd-meet-panel .yvd-m-grip-nw,
+#yvd-meet-panel .yvd-m-grip-se, #yvd-meet-panel .yvd-m-grip-sw { width: 14px; height: 14px; }
+#yvd-meet-panel .yvd-m-grip-ne { top: 0; right: 0; cursor: nesw-resize; }
+#yvd-meet-panel .yvd-m-grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+#yvd-meet-panel .yvd-m-grip-nw { top: 0; left: 0; cursor: nwse-resize; }
+#yvd-meet-panel .yvd-m-grip-se { bottom: 0; right: 0; cursor: nwse-resize; }
+#yvd-meet-panel .yvd-m-grip:hover { background: rgba(30, 136, 229, 0.35); }

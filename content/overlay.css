@@ -1,0 +1,59 @@
+/* Hide YouTube's native caption window while YVD is active */
+html.yvd-active .ytp-caption-window-container { display: none !important; }
+
+#yvd-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  text-align: center;
+  pointer-events: none;
+  z-index: 59;
+  --yvd-bg: 0.75;
+  transition: bottom 0.15s ease;
+  font-family: Roboto, Arial, sans-serif;
+}
+/* lift above the control bar while it is visible */
+#movie_player:not(.ytp-autohide) #yvd-overlay { bottom: calc(10% + 50px); }
+#movie_player.ad-showing #yvd-overlay { display: none; }
+
+#yvd-overlay .yvd-line {
+  display: inline-block;
+  background: rgba(0, 0, 0, var(--yvd-bg));
+  border-left: 3px solid #1e88e5;
+  color: #fff;
+  padding: 0.12em 0.5em;
+  pointer-events: auto; /* the lines themselves are the drag handle */
+  cursor: grab;
+  user-select: none;
+  border-radius: 4px;
+  line-height: 1.35;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  white-space: pre-wrap;
+}
+#yvd-overlay.yvd-dragging { transition: none; }
+#yvd-overlay.yvd-dragging .yvd-line { cursor: grabbing; }
+#yvd-overlay .yvd-vi { font-weight: 500; }
+#yvd-overlay .yvd-src { font-weight: 500; }
+/* both lines shown: original on top at full size, translation slightly smaller below */
+#yvd-overlay.yvd-bilingual .yvd-vi { font-size: 0.85em; font-weight: 400; color: #9ecbff; }
+#yvd-overlay .yvd-row { display: block; margin-top: 2px; }
+#yvd-overlay .yvd-row:empty { display: none; }
+
+#yvd-status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 60;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid #1e88e5;
+  color: #fff;
+  font: 500 12px/1.4 Roboto, Arial, sans-serif;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+#yvd-status.yvd-show { opacity: 1; }

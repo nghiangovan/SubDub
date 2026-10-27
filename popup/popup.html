@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SubDub – Phụ đề &amp; lồng tiếng</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>SubDub</h1>
+    <label class="switch" title="Bật/tắt">
+      <input type="checkbox" id="enabled">
+      <span class="slider"></span>
+    </label>
+  </header>
+
+  <section>
+    <div class="label">Chế độ</div>
+    <div class="radios">
+      <label><input type="radio" name="mode" value="subtitle"> Chỉ phụ đề</label>
+      <label><input type="radio" name="mode" value="dub"> Chỉ lồng tiếng</label>
+      <label><input type="radio" name="mode" value="both"> Cả hai</label>
+    </div>
+    <label class="check"><input type="checkbox" id="showOriginal"> Hiện dòng gốc (YouTube)</label>
+  </section>
+
+  <section>
+    <div class="label">Trang web</div>
+    <label class="check"><input type="checkbox" id="siteYoutube"> YouTube</label>
+    <label class="check"><input type="checkbox" id="siteMeet"> Google Meet</label>
+  </section>
+
+  <section id="meetSection">
+    <div class="label">Google Meet</div>
+    <div class="hint">Bật phụ đề CC (phím c) trong cuộc họp và chọn Meeting language = English. Tiện ích chỉ đọc phụ đề của Meet, không bấm nút nào của Meet.</div>
+    <label class="check"><input type="checkbox" id="meetAutoCC"> Tự bật phụ đề (CC) của Meet khi vào cuộc họp</label>
+    <label class="check"><input type="checkbox" id="meetShowOriginal"> Hiện câu gốc (tiếng Anh) phía trên</label>
+    <label class="check"><input type="checkbox" id="meetSkipSelf"> Không đọc lời của chính tôi (&quot;You&quot;/&quot;Bạn&quot;)</label>
+    <button id="meetResetPos" type="button" class="spaced">Đặt lại vị trí bảng phụ đề</button>
+    <div class="hint warn" id="headphoneNote">Khi lồng tiếng trong Meet, hãy đeo tai nghe để micro không thu lại giọng đọc.</div>
+  </section>
+
+  <section>
+    <label class="label" for="provider">Nguồn dịch</label>
+    <select id="provider">
+      <option value="auto">Tự động (ưu tiên dịch trên máy)</option>
+      <option value="local">Dịch trên máy (Chrome, offline, không giới hạn)</option>
+      <option value="google">Google Dịch (miễn phí)</option>
+      <option value="youtube">YouTube (dịch có sẵn)</option>
+      <option value="claude">Claude API</option>
+    </select>
+    <div class="hint" id="trStatus"></div>
+    <div class="dl" id="trBox">
+      <button id="trDownload" type="button">Tải bộ dịch offline (1 lần)</button>
+      <progress id="trProgress" max="100" value="0" hidden></progress>
+    </div>
+    <div id="claudeBox" hidden>
+      <label class="label" for="claudeKey">Khoá API Claude</label>
+      <input type="password" id="claudeKey" autocomplete="off" placeholder="sk-ant-...">
+      <label class="check"><input type="checkbox" id="concise"> Dịch ngắn gọn cho vừa thời lượng lồng tiếng</label>
+      <label class="label" for="claudeModel">Mô hình</label>
+      <input type="text" id="claudeModel" autocomplete="off">
+    </div>
+  </section>
+
+  <section>
+    <label class="label" for="ttsEngine">Giọng đọc</label>
+    <select id="ttsEngine">
+      <option value="auto">Tự động (Google, dự phòng offline)</option>
+      <option value="google">Google Translate</option>
+      <option value="piper">Offline (Piper)</option>
+      <option value="system">Giọng hệ thống</option>
+    </select>
+    <div id="voiceBox">
+      <label class="label" for="ttsVoice">Giọng hệ thống</label>
+      <select id="ttsVoice"></select>
+    </div>
+    <div class="hint" id="voiceHint"></div>
+    <div class="hint" id="piperStatus"></div>
+    <div class="dl" id="piperBox">
+      <button id="piperDownload" type="button">Tải giọng offline (63MB, 1 lần)</button>
+      <progress id="piperProgress" max="100" value="0" hidden></progress>
+    </div>
+
+    <label class="label" for="ttsRate">Tốc độ đọc <b id="ttsRateVal"></b></label>
+    <input type="range" id="ttsRate" min="0.7" max="1.6" step="0.05">
+
+    <label class="label" for="ttsMaxRate">Tốc độ đọc tối đa <b id="ttsMaxRateVal"></b></label>
+    <input type="range" id="ttsMaxRate" min="1" max="3" step="0.1">
+
+    <label class="label" for="dubMaxSpeed">Tắt lồng tiếng khi video nhanh hơn <b id="dubMaxSpeedVal"></b></label>
+    <input type="range" id="dubMaxSpeed" min="1" max="4" step="0.25">
+
+    <label class="label" for="dubVolume">Âm lượng giọng lồng tiếng <b id="dubVolumeVal"></b></label>
+    <input type="range" id="dubVolume" min="0" max="1" step="0.05">
+
+    <label class="label" for="duckLevel">Âm lượng video gốc khi lồng tiếng <b id="duckLevelVal"></b></label>
+    <input type="range" id="duckLevel" min="0" max="1" step="0.05">
+    <div class="hint">Phím tắt trên YouTube: Alt+Shift+↑ / Alt+Shift+↓ chỉnh âm lượng giọng lồng tiếng ±10%.</div>
+
+    <label class="label" for="fontSize">Cỡ chữ phụ đề <b id="fontSizeVal"></b></label>
+    <input type="range" id="fontSize" min="14" max="48" step="1">
+
+    <label class="label" for="subBgOpacity">Độ đậm nền phụ đề <b id="subBgOpacityVal"></b></label>
+    <input type="range" id="subBgOpacity" min="0" max="1" step="0.05">
+    <div class="hint">Trên YouTube: kéo phụ đề để di chuyển, nhấp đúp để đưa về chỗ cũ.</div>
+    <button id="ytResetPos" type="button" class="spaced">Đặt lại vị trí phụ đề YouTube</button>
+  </section>
+
+  <footer>
+    <button id="clearCache" type="button">Xoá cache</button>
+    <span id="msg" class="hint"></span>
+  </footer>
+
+  <script src="../lib/settings.js"></script>
+  <script src="../lib/providers.js"></script>
+  <script src="../lib/local-translate.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

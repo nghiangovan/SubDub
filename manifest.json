@@ -1,0 +1,93 @@
+{
+  "manifest_version": 3,
+  "name": "SubDub – Phụ đề & lồng tiếng",
+  "version": "0.4.2",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlhkmPNQ6riR6UDqgb5n9iB0I+gMgtyCUgKyZNnQfLk3M6kRFxxHo3KoenBJbZuHNVXFtB5mvHhmRg9C98aDZF/74lMgrvE+v6Txk1Ec2nZIe/iDxrdmzdK7cletBS9/+Aco40h29UTT2e6gy937nO225De6tj8cKNOLTEDohB1BU55+ipeDfGSv3J4gx9rOGyyjdyW7JLpe0sCc6546zmnXETRLG9rlEXNu/j0mxfQeHppfzysqtbPVQIbq1628fO8pnYdErDs+IWHXDhugdw0AiQa0hkHJbIFWm68rD0I8rH/QoCnHM1I55iew0IGpN6OYB+yP5S+te59VO0tzCdQIDAQAB",
+  "description": "Phụ đề và lồng tiếng tiếng Việt cho video YouTube và phụ đề trực tiếp Google Meet (dịch trên máy, giọng offline Piper).",
+  "permissions": [
+    "storage",
+    "tts",
+    "offscreen",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "https://translate.googleapis.com/*",
+    "https://translate.google.com/*",
+    "https://api.anthropic.com/*",
+    "https://huggingface.co/*",
+    "https://*.huggingface.co/*",
+    "https://*.hf.co/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.youtube.com/*"
+      ],
+      "js": [
+        "content/inject.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://www.youtube.com/*"
+      ],
+      "js": [
+        "lib/settings.js",
+        "lib/providers.js",
+        "lib/local-translate.js",
+        "content/captions.js",
+        "content/overlay.js",
+        "content/dubber.js",
+        "content/localtr.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/overlay.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://meet.google.com/*"
+      ],
+      "js": [
+        "lib/settings.js",
+        "lib/providers.js",
+        "lib/local-translate.js",
+        "lib/sentences.js",
+        "content/dubber.js",
+        "content/localtr.js",
+        "content/livetr.js",
+        "content/meet-panel.js",
+        "content/meet.js"
+      ],
+      "css": [
+        "content/meet.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "SubDub – Phụ đề & lồng tiếng",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

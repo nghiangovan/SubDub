@@ -50,6 +50,7 @@
     else if (eng === 'piper') hint = 'Giọng Piper tiếng Việt chạy hoàn toàn trên máy: không cần mạng, không giới hạn. Cần tải 1 lần.';
     else if (eng === 'system' && !hasVoices) hint = 'Không tìm thấy giọng tiếng Việt trên hệ thống: dùng giọng offline (nếu đã tải) hoặc chrome.tts.';
     else if (eng === 'auto' && !hasVoices) hint = 'Máy chưa có giọng tiếng Việt: dùng Google Translate, tự chuyển sang giọng offline khi Google lỗi. Mẹo: mở tiện ích trong Microsoft Edge để có giọng HoaiMy/NamMinh tự nhiên, miễn phí.';
+    else if (eng === 'auto' && hasVoices && !hasNatural) hint = 'Đọc bằng Google Translate. Khi Google tạm chặn sẽ chuyển ngay sang giọng có sẵn của máy (ô trên), không cần tải gì. Chọn "Giọng hệ thống" nếu muốn luôn dùng giọng của máy.';
     else if ((eng === 'auto' || eng === 'system') && hasNatural) hint = 'Đang dùng giọng Microsoft Natural của Edge (HoaiMy/NamMinh): tự nhiên, miễn phí, cần mạng. Chọn giọng khác ở ô trên nếu muốn.';
     $('voiceHint').textContent = hint;
   }

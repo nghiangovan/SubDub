@@ -319,13 +319,17 @@ test('gtts.buildUrl encodes text and uses the tw-ob endpoint', () => {
 });
 
 test('resolveEngine: auto / system / google selection and fallbacks (no piper)', () => {
-  assert.strictEqual(D.resolveEngine('auto', true, false), 'system');
+  // auto: Google first; a plain installed voice (Windows "An") is the instant fallback when Google is down
+  assert.strictEqual(D.resolveEngine('auto', true, false), 'google');
+  assert.strictEqual(D.resolveEngine('auto', true, true), 'system');
   assert.strictEqual(D.resolveEngine('auto', false, false), 'google');
   assert.strictEqual(D.resolveEngine('auto', false, true), 'chrome');
-  assert.strictEqual(D.resolveEngine('auto', true, true), 'system');
+  // a Natural (Edge) voice beats Google
+  assert.strictEqual(D.resolveEngine('auto', true, false, false, true), 'system');
   assert.strictEqual(D.resolveEngine('system', true, false), 'system');
   assert.strictEqual(D.resolveEngine('system', false, false), 'chrome');
   assert.strictEqual(D.resolveEngine('google', true, false), 'google');
+  assert.strictEqual(D.resolveEngine('google', true, true), 'system');
   assert.strictEqual(D.resolveEngine('google', false, true), 'chrome');
   assert.strictEqual(D.resolveEngine(undefined, false, false), 'google');
 });
@@ -334,6 +338,7 @@ test('resolveEngine: piper takes over instantly when Google is down (and only th
   // auto, no system voice: google normally, piper for the whole cooldown once Google failed
   assert.strictEqual(D.resolveEngine('auto', false, false, true), 'google');
   assert.strictEqual(D.resolveEngine('auto', false, true, true), 'piper');
+  assert.strictEqual(D.resolveEngine('auto', true, true, true), 'system'); // installed voice before Piper
   assert.strictEqual(D.resolveEngine('google', false, true, true), 'piper');
   // piper not downloaded: chrome.tts as before
   assert.strictEqual(D.resolveEngine('auto', false, true, false), 'chrome');
@@ -450,8 +455,8 @@ test('localSource: null for unknown or already-Vietnamese tracks', () => {
   assert.strictEqual(PV.localSource(undefined), null);
 });
 
-test('resolveChain: auto = local when installed else google; google/claude keep a local backup', () => {
-  assert.deepStrictEqual(PV.resolveChain('auto', true), ['local', 'google']);
+test('resolveChain: auto = google with local backup; local = local first; google/claude keep a local backup', () => {
+  assert.deepStrictEqual(PV.resolveChain('auto', true), ['google', 'local']);
   assert.deepStrictEqual(PV.resolveChain('auto', false), ['google']);
   assert.deepStrictEqual(PV.resolveChain('local', true), ['local', 'google']);
   assert.deepStrictEqual(PV.resolveChain('local', false), ['google']); // unsupported / not installed pair -> google
@@ -479,9 +484,9 @@ test('router: google failure switches the remaining work to local, and back afte
   assert.strictEqual(r.pick(), 'google'); // cooldown over
 });
 
-test('router: local failure falls back to google (auto order), success resets the failure count', () => {
+test('router: local failure falls back to google (local-first order), success resets the failure count', () => {
   let now = 0;
-  const r = PV.createRouter(PV.resolveChain('auto', true), { threshold: 2, now: () => now });
+  const r = PV.createRouter(PV.resolveChain('local', true), { threshold: 2, now: () => now });
   assert.strictEqual(r.pick(), 'local');
   r.fail('local');
   r.ok('local', 5); // a success in between resets the streak
@@ -872,7 +877,7 @@ test('live translator: on-device first, Google fallback with automatic switching
     onNotice: (m) => calls.push('notice:' + m)
   };
   const lt = LTR.create(deps);
-  lt.configure('auto', 'en');
+  lt.configure('local', 'en');
   assert.deepStrictEqual(await lt.translate('Hello team.'), { vi: 'L:Hello team.', provider: 'local' });
   assert.strictEqual((await lt.translate('Hello team.')).provider, 'cache');
   assert.strictEqual(await lt.translateInterim('Hello team'), 'L:Hello team');
@@ -895,6 +900,27 @@ test('live translator: on-device first, Google fallback with automatic switching
   const lt3 = LTR.create(Object.assign({}, deps, { send: async () => ({ ok: false }), localtr: { probe: async () => ({ where: null }), translate: async () => '' } }));
   lt3.configure('google', 'en');
   assert.strictEqual(await lt3.translate('Hi all.'), null);
+});
+
+test('live translator auto: Google first, on-device takes over when Google is blocked; drafts stay on-device', async () => {
+  let googleOk = true;
+  const calls = [];
+  const lt = LTR.create({
+    PV,
+    now: () => 1000,
+    send: async (msg) => {
+      calls.push('google');
+      return googleOk ? { ok: true, result: ['G:' + msg.texts[0]], failed: [] } : { ok: false, error: 'http 429' };
+    },
+    localtr: { probe: async () => ({ where: 'offscreen', availability: 'available', source: 'en', target: 'vi' }), translate: async (info, t) => (calls.push('local'), 'L:' + t) },
+    onNotice: () => {}
+  });
+  lt.configure('auto', 'en');
+  assert.deepStrictEqual(await lt.translate('One.'), { vi: 'G:One.', provider: 'google' });
+  assert.ok(!calls.includes('local'));
+  assert.strictEqual(await lt.translateInterim('One more'), 'L:One more'); // drafts: on-device, never Google
+  googleOk = false;
+  assert.deepStrictEqual(await lt.translate('Two.'), { vi: 'L:Two.', provider: 'local' });
 });
 
 test('settings: per-site and Meet options default on, normalise to booleans', () => {

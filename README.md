@@ -78,7 +78,7 @@ Cài đặt của bạn được giữ nguyên.
 - Bắt phụ đề của video (hook `/api/timedtext` + danh sách `captionTracks`, có phương án dự phòng).
 - Gộp các mảnh phụ đề thành câu, dịch sang tiếng Việt, lưu cache (tối đa 50 video).
 - Lớp phụ đề tuỳ chỉnh trên trình phát (tuỳ chọn hiện dòng gốc bên dưới), hoạt động ở chế độ toàn màn hình.
-- **Dịch trên máy** bằng Translator API có sẵn của Chrome (Chrome 138+ trên máy tính): offline, không giới hạn. Mặc định là *Tự động*: dùng dịch trên máy nếu đã cài, nếu không dùng Google Dịch; nếu một nguồn bị chặn/lỗi giữa chừng thì phần còn lại tự chuyển sang nguồn kia.
+- **Dịch trên máy** bằng Translator API có sẵn của Chrome (Chrome 138+ trên máy tính): offline, không giới hạn. Mặc định là *Tự động*: dịch bằng Google Dịch, và dùng dịch trên máy làm dự phòng (nếu đã tải). Nếu một nguồn bị chặn hoặc lỗi giữa chừng, phần còn lại tự chuyển sang nguồn kia.
 - Các nguồn dịch khác: Google Dịch (miễn phí, không chính thức), YouTube (`tlang=vi`), Claude API (tuỳ chọn, cần khoá).
 - Lồng tiếng: giọng hệ thống `speechSynthesis` (`vi-*`) nếu có, **Google Translate TTS** (mặc định khi máy không có giọng Việt) và **giọng offline Piper** (`vi_VN-vais1000-medium`) làm dự phòng tự động; tự giảm âm lượng video gốc khi đọc.
 - Hỗ trợ điều hướng SPA, tua video, tạm dừng, đổi tốc độ phát, quảng cáo.
@@ -100,7 +100,7 @@ Nguyên tắc: không tài khoản, không khoá API, và việc nghe **không b
 
 **Hành vi dự phòng**
 
-- *Dịch*: `Tự động` = dịch trên máy nếu mô hình đã cài và cặp ngôn ngữ được hỗ trợ (ngôn ngữ gốc lấy từ `languageCode` của track phụ đề, ví dụ `en-US` → `en`), ngược lại Google. Khi nguồn đang dùng lỗi 2 lần liên tiếp (429, mạng...) nó bị "tạm nghỉ" 60 giây và các đoạn chưa dịch chuyển sang nguồn còn lại (Google ⇄ dịch trên máy). Mọi lựa chọn (Google, Claude, YouTube) đều có dịch trên máy làm dự phòng nếu mô hình đã cài. Nếu mọi nguồn đều lỗi thì hiện thông báo và tự thử lại sau thời gian nghỉ.
+- *Dịch*: `Tự động` = Google Dịch trước, dịch trên máy làm dự phòng khi mô hình đã cài và cặp ngôn ngữ được hỗ trợ (ngôn ngữ gốc lấy từ `languageCode` của track phụ đề, ví dụ `en-US` → `en`). `Dịch trên máy` = ngược lại: trên máy trước, Google làm dự phòng. Khi nguồn đang dùng lỗi 2 lần liên tiếp (429, mạng...) nó bị "tạm nghỉ" 60 giây và các đoạn chưa dịch chuyển sang nguồn còn lại (Google ⇄ dịch trên máy). Mọi lựa chọn (Google, Claude, YouTube) đều có dịch trên máy làm dự phòng nếu mô hình đã cài. Nếu mọi nguồn đều lỗi thì hiện thông báo và tự thử lại sau thời gian nghỉ.
 - *Giọng đọc*: `Tự động` = giọng hệ thống (nếu có) → Google Translate; **khi Google lỗi bất kỳ (429/mạng/quá thời gian) dòng đang đọc được chuyển ngay sang Piper** (không có khoảng lặng, không trả lại âm lượng gốc) và giữ Piper trong 60 giây trước khi thử lại Google. Thông báo: "SubDub: Google tạm chặn, đang dùng giọng offline". Nếu chưa tải Piper: như trước đây (trả lại âm lượng gốc, `chrome.tts`), kèm thông báo gợi ý bấm "Tải giọng offline".
 - *Giảm bị Google chặn*: âm thanh Google đã đọc được **lưu lại trên máy** (Cache Storage, tối đa ~2000 câu), nên xem lại video hay gặp câu lặp lại thì không gửi yêu cầu mới. Mỗi lúc chỉ gửi tối đa 2 yêu cầu, và câu đang đọc được ưu tiên hơn câu tải trước. Khi Google chặn (HTTP 429 hoặc chuyển sang trang `/sorry`), tiện ích ngừng gọi Google lần lượt **1 phút, 5 phút, rồi 15 phút** và dùng giọng offline trong lúc chờ. Chỉ cần một lần đọc thành công là thời gian chờ quay về 1 phút.
 
@@ -108,7 +108,7 @@ Nguyên tắc: không tài khoản, không khoá API, và việc nghe **không b
 
 ## Google Meet
 
-Tiện ích đọc **phụ đề trực tiếp (CC) của chính Meet**, dịch từng câu tiếng Anh đã hoàn chỉnh sang tiếng Việt và hiện trong một bảng nổi trên cuộc họp. Hoàn toàn miễn phí, không giới hạn, không tài khoản hay khoá API: dịch bằng Translator API của Chrome (trên máy) trước, Google Dịch làm dự phòng và tự chuyển qua lại; giọng đọc dùng cùng các giọng như YouTube (Google Translate TTS mặc định, Piper offline dự phòng, có chỉnh âm lượng).
+Tiện ích đọc **phụ đề trực tiếp (CC) của chính Meet**, dịch từng câu tiếng Anh đã hoàn chỉnh sang tiếng Việt và hiện trong một bảng nổi trên cuộc họp. Hoàn toàn miễn phí, không giới hạn, không tài khoản hay khoá API: dịch bằng Google Dịch trước, Translator API của Chrome (trên máy) làm dự phòng và tự chuyển qua lại; giọng đọc dùng cùng các giọng như YouTube (Google Translate TTS mặc định, Piper offline dự phòng, có chỉnh âm lượng).
 
 **Cách dùng**
 
@@ -196,7 +196,7 @@ Trên YouTube có thể **kéo phụ đề** tới chỗ khác trong khung video
 
 Cài đặt **Giọng đọc** (`ttsEngine`) có 4 lựa chọn:
 
-- **Tự động (Google, dự phòng offline)** (mặc định): dùng giọng tiếng Việt của hệ thống nếu có; nếu không có thì dùng Google Translate; khi Google lỗi thì dùng Piper (nếu đã tải) trong 60 giây rồi thử lại Google. Thanh trạng thái hiện "SubDub: dùng giọng Google Translate (tiếng Việt)".
+- **Tự động (Google, dự phòng offline)** (mặc định): đọc bằng Google Translate. Riêng giọng Microsoft *Natural* (HoaiMy/NamMinh, có trên Edge) được ưu tiên hơn Google. Khi Google lỗi, tiện ích dùng giọng tiếng Việt có sẵn của máy (ví dụ Microsoft An); không có thì dùng Piper (nếu đã tải); rồi thử lại Google sau thời gian chờ. Thanh trạng thái hiện "SubDub: dùng giọng Google Translate (tiếng Việt)".
 - **Google Translate**: luôn ưu tiên Google (vẫn chuyển sang Piper khi Google lỗi và Piper đã tải).
 - **Offline (Piper)**: luôn dùng Piper, không cần mạng sau khi đã tải giọng (chưa tải thì tự tải một lần, Google đọc tạm).
 - **Giọng hệ thống**: chỉ dùng `speechSynthesis` (chọn giọng ở ô bên dưới). Nếu máy không có giọng `vi-*` thì dùng Piper nếu đã tải, nếu không thì `chrome.tts` (có thể không phát ra tiếng).
@@ -214,7 +214,7 @@ Về giọng offline Piper:
 - Văn bản được chuẩn hoá nhẹ trước khi đọc (bỏ URL, `[Âm nhạc]`, ký hiệu nhạc, emoji; `50%` → "50 phần trăm", `$20` → "20 đô la", `1,000` → `1000`, `&` → "và"...), cắt thành khối ≤ 180 ký tự, tổng hợp ra WAV, cắt khoảng lặng đầu/cuối rồi phát bằng cùng bộ phát (`playbackRate`, `preservesPitch`, âm lượng, tạm dừng/tiếp tục/huỷ, tải trước 2 câu kế tiếp, cache LRU theo engine + giọng + văn bản).
 - Tốc độ tổng hợp phụ thuộc CPU (1 luồng WASM): thường khoảng 0.25 giây tổng hợp cho mỗi giây âm thanh sau khi đã nạp mô hình (lần đầu nạp khoảng 2.5 giây). Khi lồng tiếng bắt đầu, nếu có thể dùng Piper tiện ích nạp mô hình sẵn để việc chuyển từ Google sang Piper gần như tức thì.
 
-**Người dùng Windows** có thể cài gói giọng nói tiếng Việt để có giọng hệ thống (không cần mạng): *Settings → Time & language → Speech → Add voices* và chọn Tiếng Việt (Vietnamese), sau đó khởi động lại Chrome.
+**Giọng dự phòng có sẵn của Windows (nên cài):** vào *Settings → Time & language → Speech → Add voices*, chọn **Tiếng Việt (Vietnamese)**, rồi khởi động lại Chrome (gõ `chrome://restart`). Máy sẽ có giọng **Microsoft An**: miễn phí, chạy offline, không giới hạn. Ở chế độ *Tự động*, tiện ích vẫn đọc bằng Google Translate cho hay, và **chuyển ngay sang giọng An** khi Google tạm chặn (không cần tải gì). Muốn luôn đọc bằng giọng An thì chọn *Giọng đọc* = **Giọng hệ thống**.
 
 ## Giọng đọc tự nhiên trên Microsoft Edge (miễn phí)
 

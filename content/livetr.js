@@ -1,6 +1,6 @@
 /* Live translation of single lines (Google Meet captions). Same providers and failover as the YouTube pipeline:
- *   provider 'auto' / 'local' : on-device Chrome Translator first (when its model is installed), Google as backup
- *   provider 'google' / 'youtube' : Google first, on-device as backup
+ *   provider 'local'          : on-device Chrome Translator first (when its model is installed), Google as backup
+ *   provider 'auto' / 'google' / 'youtube' : Google first, on-device as backup (interim drafts stay on-device)
  *   provider 'claude'         : Claude (falls back to Google in the background), on-device as backup
  * YVD.providers.createRouter tracks failures: 2 consecutive failures park a provider for 60 s and the line is
  * retried with the next one, so translation never stops. Results go through a small in-memory LRU. */

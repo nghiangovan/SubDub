@@ -225,7 +225,8 @@
     return provider === 'claude' && settings.concise ? 'claude-concise' : provider;
   }
   function cacheCandidates(provider) {
-    if (provider === 'auto' || provider === 'local') return ['local', 'google'];
+    if (provider === 'auto') return ['google', 'local'];
+    if (provider === 'local') return ['local', 'google'];
     return [cacheKeyFor(provider)];
   }
 
@@ -393,7 +394,7 @@
     }
     s.localInfo = info;
     const localOk = !!(info && info.where && info.availability === 'available');
-    if (!localOk && (s.provider === 'local' || s.provider === 'auto') && info && info.where && /^(downloadable|downloading)$/.test(info.availability)) {
+    if (!localOk && s.provider === 'local' && info && info.where && /^(downloadable|downloading)$/.test(info.availability)) {
       O.status('SubDub: chưa tải bộ dịch offline, tạm dùng Google (tải trong popup)', 5000);
     }
     const router = PV.createRouter(PV.resolveChain(s.provider, localOk), { threshold: 2, cooldown: 60000 });

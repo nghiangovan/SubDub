@@ -98,13 +98,16 @@
   //   hasVi: a vi* speechSynthesis voice exists; googleDown: Google TTS failed within the cooldown;
   //   piperReady: the Piper voice is downloaded.
   // Any Google failure falls back to Piper at once (when downloaded) and stays on it for the cooldown.
-  function resolveEngine(setting, hasVi, googleDown, piperReady) {
+  // natural: the system voice is a Microsoft "Natural" one (Edge), better than Google. A plain installed voice
+  // (Windows "Microsoft An") sounds worse than Google, so in auto it is the instant offline fallback instead.
+  function resolveEngine(setting, hasVi, googleDown, piperReady, natural) {
     const offline = piperReady ? 'piper' : 'chrome';
+    const fallback = hasVi ? 'system' : offline;
     if (setting === 'system') return hasVi ? 'system' : offline;
     if (setting === 'piper') return piperReady ? 'piper' : googleDown ? 'chrome' : 'google'; // not downloaded yet: Google meanwhile
-    if (setting === 'google') return googleDown ? offline : 'google';
-    if (hasVi) return 'system'; // auto
-    return googleDown ? offline : 'google';
+    if (setting === 'google') return googleDown ? fallback : 'google';
+    if (hasVi && natural) return 'system'; // auto
+    return googleDown ? fallback : 'google';
   }
 
   const GOOGLE_COOLDOWN = 60000; // after a Google TTS failure, stay on the fallback this long (ms)
@@ -302,7 +305,7 @@
   // Warm the offscreen cache with the upcoming cues' audio (Google fetch or Piper synthesis).
   function prefetchAhead(cues) {
     const voice = pickVoice();
-    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady);
+    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady, YVD.settings.isNaturalVoice(voice));
     if (engine !== 'google' && engine !== 'piper') return;
     const texts = [];
     cues.forEach(function (c) {
@@ -333,7 +336,7 @@
   function startUtterance(cue, nextCue) {
     const id = ++curId;
     const voice = pickVoice();
-    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady);
+    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady, YVD.settings.isNaturalVoice(voice));
     voiceKey = engine === 'system' ? voice.name : engine === 'google' ? 'google' : engine === 'piper' ? 'piper' : 'fallback';
     const plan = planSpeech({
       cue: cue,
@@ -388,7 +391,7 @@
     } else if (engine === 'google') {
       usingFallback = false;
       setSuppressed(false); // (re)duck optimistically; undone on failure
-      if (cfg.ttsEngine === 'auto' && !voice && !announcedGoogle) {
+      if (cfg.ttsEngine === 'auto' && !announcedGoogle) {
         announcedGoogle = true;
         onStatus('SubDub: dùng giọng Google Translate (tiếng Việt)');
       }
@@ -400,7 +403,12 @@
         }
         if (!r || !r.ok) {
           googleFailed(r);
-          if (piperReady) speakPiper(plan, id); // instant switch for this very line, no silence gap
+          // instant switch for this very line, no silence gap: installed system voice, else Piper, else chrome.tts
+          if (voice) {
+            voiceKey = voice.name;
+            usingOffscreen = false;
+            dispatch('system', voice, plan, id);
+          } else if (piperReady) speakPiper(plan, id);
           else speakChrome(plan, id);
           return;
         }
@@ -435,7 +443,7 @@
     if (!item || !active) return;
     const id = ++curId;
     const voice = pickVoice();
-    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady);
+    const engine = resolveEngine(cfg.ttsEngine, !!voice, googleIsDown(googleDownUntil), piperReady, YVD.settings.isNaturalVoice(voice));
     voiceKey = engine === 'system' ? voice.name : engine === 'google' ? 'google' : engine === 'piper' ? 'piper' : 'fallback';
     const plan = { text: item.text, rate: liveRate(cfg.ttsRate, liveQueue.length, cfg.ttsMaxRate), end: 0, merged: false };
     speaking = true;
@@ -486,6 +494,11 @@
     const wasDown = googleIsDown(googleDownUntil);
     googleDownUntil = Math.max(cooldownEnd(Date.now(), GOOGLE_COOLDOWN), (r && r.retryAt) || 0);
     if (wasDown) return; // already on the fallback: no repeated status pill
+    const sysVoice = pickVoice();
+    if (sysVoice) {
+      onStatus('SubDub: Google tạm chặn, đang dùng giọng ' + sysVoice.name.replace(/^Microsoft\s+/i, '').replace(/\s+-.*$/, '') + ' của máy'); // no un-duck
+      return;
+    }
     if (piperReady) {
       onStatus('SubDub: Google tạm chặn, đang dùng giọng offline'); // piper takes over: no un-duck
       return;
